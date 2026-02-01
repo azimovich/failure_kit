@@ -1,4 +1,4 @@
-library;
+library dart_failure_handler;
 
 export 'src/either.dart';
 export 'src/failure.dart';
