@@ -21,16 +21,25 @@ sealed class Either<L, R> {
   bool get isRight => this is Right<L, R>;
 
   /// Get [Left] value, may throw an exception when the value is [Right]
-  L get left => this.fold<L>(
-    (L value) => value,
-    (R right) => throw Exception("Illegal use. You should check isLeft before calling"),
-  );
+  L get left => fold<L>(
+        (L value) => value,
+        (R right) => throw Exception("Illegal use. You should check isLeft before calling"),
+      );
+
+  /// Get [Right] value or return [defaultValue] if [Left]
+  R getOrElse(R defaultValue) => fold((_) => defaultValue, (r) => r);
+
+  /// Get [Right] value or compute from [defaultValue] function if [Left]
+  R getOrElseCompute(R Function(L left) defaultValue) => fold(defaultValue, (r) => r);
+
+  /// Get [Left] value or return [defaultValue] if [Right]
+  L getLeftOrElse(L defaultValue) => fold((l) => l, (_) => defaultValue);
 
   /// Get [Right] value, may throw an exception when the value is [Left]
-  R get right => this.fold<R>(
-    (L left) => throw Exception("Illegal use. You should check isRight before calling"),
-    (R value) => value,
-  );
+  R get right => fold<R>(
+        (L left) => throw Exception("Illegal use. You should check isRight before calling"),
+        (R value) => value,
+      );
 
   /// Transform values of [Left] and [Right]
   Either<TL, TR> either<TL, TR>(TL Function(L left) fnL, TR Function(R right) fnR);
@@ -93,7 +102,7 @@ sealed class Either<L, R> {
 
   @override
   bool operator ==(Object other) =>
-      this.fold((left) => other is Left && left == other.value, (right) => other is Right && right == other.value);
+      fold((left) => other is Left && left == other.value, (right) => other is Right && right == other.value);
 
   @override
   int get hashCode => fold((left) => left.hashCode, (right) => right.hashCode);
