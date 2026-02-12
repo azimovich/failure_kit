@@ -1,6 +1,6 @@
 # dart_failure_handler
 
-A professional, type-safe error handling package for Dart/Flutter applications using [Dio](https://pub.dev/packages/dio).
+A professional, HTTP-client agnostic error handling package for Dart/Flutter applications with optional [Dio](https://pub.dev/packages/dio) support.
 
 [![Dart](https://img.shields.io/badge/Dart-3.0+-blue.svg)](https://dart.dev)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -9,10 +9,11 @@ A professional, type-safe error handling package for Dart/Flutter applications u
 
 - 🎯 **Type-safe error handling** with sealed `Failure` classes
 - 🔄 **Either pattern** for functional error management (`Left` for failures, `Right` for success)
-- 🌐 **Dio integration** - automatic conversion of Dio exceptions to typed failures
+- 🔌 **HTTP-client agnostic** — works with Dio, http, Chopper, or any HTTP client
+- 🌐 **Optional Dio support** via `package:dart_failure_handler/dio.dart`
 - 🎨 **Pattern matching** with `when()` and `maybeWhen()` methods
 - ⚡ **Async support** with `mapAsync()`, `thenAsync()` and more
-- 🧩 **Repository mixin** for clean repository implementations
+- 🧩 **Configurable repository mixin** with pluggable `ErrorMapper`
 
 ## Installation
 
@@ -25,46 +26,45 @@ dependencies:
       url: https://github.com/your-username/dart_failure_handler.git
 ```
 
-Or if published to pub.dev:
+## Quick Start
 
-```yaml
-dependencies:
-  dart_failure_handler: ^1.0.0
-```
-
-## Usage
-
-### Basic Either Usage
+### Import
 
 ```dart
+// Core (any HTTP client) — no Dio dependency in your code
 import 'package:dart_failure_handler/dart_failure_handler.dart';
 
-// Creating Either values
-final success = Right<Failure, String>('Hello World');
-final failure = Left<Failure, String>(ServerFailure(statusCode: 500));
-
-// Using fold
-final message = success.fold(
-  (failure) => 'Error: ${failure.message}',
-  (value) => 'Success: $value',
-);
-
-// Using getOrElse
-final value = success.getOrElse('default value');
-
-// Mapping values
-final mapped = success.map((value) => value.toUpperCase());
+// OR with Dio support — includes everything from core + Dio handlers
+import 'package:dart_failure_handler/dio.dart';
 ```
 
-### Repository Pattern with RepositoryHandler
+### Basic Repository (any HTTP client)
 
 ```dart
-import 'package:dio/dio.dart';
 import 'package:dart_failure_handler/dart_failure_handler.dart';
 
 class UserRepository with RepositoryHandler {
-  final Dio _dio;
+  final MyHttpClient _client;
+  UserRepository(this._client);
 
+  Future<Either<Failure, User>> getUser(int id) {
+    return call(() async {
+      final response = await _client.get('/users/$id');
+      return User.fromJson(response.body);
+    });
+  }
+}
+```
+
+### Dio Repository (with Dio support)
+
+**Method 1: Using `DioRepositoryHandler` mixin**
+
+```dart
+import 'package:dart_failure_handler/dio.dart';
+
+class UserRepository with RepositoryHandler, DioRepositoryHandler {
+  final Dio _dio;
   UserRepository(this._dio);
 
   Future<Either<Failure, User>> getUser(int id) {
@@ -73,60 +73,92 @@ class UserRepository with RepositoryHandler {
       return User.fromJson(response.data);
     });
   }
+}
+```
 
-  Future<Either<Failure, List<User>>> getUsers() {
+**Method 2: Override `errorMapper`**
+
+```dart
+import 'package:dart_failure_handler/dio.dart';
+
+class UserRepository with RepositoryHandler {
+  final Dio _dio;
+  UserRepository(this._dio);
+
+  @override
+  ErrorMapper get errorMapper => DioErrorHandler.handle;
+
+  Future<Either<Failure, User>> getUser(int id) {
     return call(() async {
-      final response = await _dio.get('/users');
-      return (response.data as List)
-          .map((json) => User.fromJson(json))
-          .toList();
+      final response = await _dio.get('/users/$id');
+      return User.fromJson(response.data);
     });
   }
 }
 ```
 
-### Handling Failures with Pattern Matching
+### Handling Results
 
 ```dart
 final result = await userRepository.getUser(1);
 
+// Option 1: fold
+result.fold(
+  (failure) => showError(failure.message),
+  (user) => showUser(user),
+);
+
+// Option 2: Pattern matching with when()
 result.fold(
   (failure) => failure.when(
     server: (f) => showError('Server error: ${f.statusCode}'),
-    network: (_) => showError('No internet connection'),
+    network: (_) => showError('No internet'),
     timeout: (_) => showError('Request timed out'),
-    cancellation: (_) => showError('Request was cancelled'),
-    parsing: (_) => showError('Data parsing error'),
+    cancellation: (_) => showError('Cancelled'),
+    parsing: (_) => showError('Data error'),
     unknown: (f) => showError(f.message),
   ),
   (user) => showUser(user),
 );
-```
 
-### Using maybeWhen for Partial Handling
-
-```dart
+// Option 3: maybeWhen (only handle what you need)
 final message = failure.maybeWhen(
-  server: (f) => 'Server error: ${f.statusCode}',
-  network: (_) => 'Check your internet connection',
+  server: (f) => 'Error ${f.statusCode}',
+  network: (_) => 'Check your connection',
   orElse: (f) => f.message,
 );
-```
 
-### Chaining Operations
-
-```dart
-final result = await userRepository.getUser(1);
-
-// Chain multiple operations
+// Option 4: getOrElse
 final userName = result
     .map((user) => user.name)
-    .map((name) => name.toUpperCase())
     .getOrElse('Anonymous');
+```
 
-// Async chaining
-final profile = await result
-    .thenAsync((user) => profileRepository.getProfile(user.id));
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│   dart_failure_handler.dart  (Core - no Dio)     │
+│                                                   │
+│   Either<L, R>    Failure (sealed)                │
+│   Left / Right    ServerFailure                   │
+│                   NoInternetFailure               │
+│   ErrorHandler    TimeoutFailure                  │
+│   (base)          CancellationFailure             │
+│                   ParsingFailure                  │
+│   RepositoryHandler                               │
+│   (configurable errorMapper)  UnknownFailure      │
+└─────────────────────────────────────────────────┘
+                       │
+                       │ extends
+                       ▼
+┌─────────────────────────────────────────────────┐
+│          dio.dart  (Dio support)                  │
+│                                                   │
+│   DioErrorHandler     DioRepositoryHandler        │
+│   (handles DioException, SocketException)         │
+│   (delegates other errors to ErrorHandler)        │
+└─────────────────────────────────────────────────┘
 ```
 
 ## Failure Types
@@ -139,6 +171,25 @@ final profile = await result
 | `CancellationFailure` | Cancelled requests          | User cancelled, CancelToken     |
 | `ParsingFailure`      | Data parsing errors         | JSON parse errors, TypeError    |
 | `UnknownFailure`      | Unexpected errors           | Any other exception             |
+
+## Custom Error Mapping
+
+You can create your own error mapper for any HTTP client:
+
+```dart
+class HttpRepository with RepositoryHandler {
+  @override
+  ErrorMapper get errorMapper => (error, st) {
+    if (error is HttpException) {
+      return ServerFailure(
+        message: error.message,
+        statusCode: error.statusCode,
+      );
+    }
+    return ErrorHandler.handle(error, st);
+  };
+}
+```
 
 ## Either API Reference
 
@@ -153,17 +204,18 @@ final profile = await result
 
 ### Methods
 
-| Method                 | Return Type             | Description                 |
-| ---------------------- | ----------------------- | --------------------------- |
-| `fold(fnL, fnR)`       | `T`                     | Pattern match on Left/Right |
-| `map(fn)`              | `Either<L, TR>`         | Transform Right value       |
-| `mapLeft(fn)`          | `Either<TL, R>`         | Transform Left value        |
-| `mapAsync(fn)`         | `Future<Either<L, TR>>` | Async transform Right       |
-| `then(fn)`             | `Either<L, TR>`         | Chain another Either        |
-| `thenAsync(fn)`        | `Future<Either<L, TR>>` | Async chain                 |
-| `getOrElse(default)`   | `R`                     | Get Right or default        |
-| `getOrElseCompute(fn)` | `R`                     | Get Right or compute        |
-| `swap()`               | `Either<R, L>`          | Swap Left and Right         |
+| Method                   | Return Type             | Description                    |
+| ------------------------ | ----------------------- | ------------------------------ |
+| `fold(fnL, fnR)`         | `T`                     | Pattern match on Left/Right    |
+| `map(fn)`                | `Either<L, TR>`         | Transform Right value          |
+| `mapLeft(fn)`            | `Either<TL, R>`         | Transform Left value           |
+| `mapAsync(fn)`           | `Future<Either<L, TR>>` | Async transform Right          |
+| `then(fn)`               | `Either<L, TR>`         | Chain another Either           |
+| `thenAsync(fn)`          | `Future<Either<L, TR>>` | Async chain                    |
+| `getOrElse(default)`     | `R`                     | Get Right or default           |
+| `getOrElseCompute(fn)`   | `R`                     | Get Right or compute from Left |
+| `getLeftOrElse(default)` | `L`                     | Get Left or default            |
+| `swap()`                 | `Either<R, L>`          | Swap Left and Right            |
 
 ### Static Methods
 
@@ -173,31 +225,6 @@ final profile = await result
 | `Either.tryExcept<E, R>(fn)`         | Simplified tryCatch                  |
 | `Either.cond(test, left, right)`     | Create based on condition            |
 | `Either.condLazy(test, left, right)` | Lazy version of cond                 |
-
-## ErrorHandler
-
-Manually convert exceptions to Failures:
-
-```dart
-try {
-  await dio.get('/api/data');
-} catch (e, st) {
-  final failure = ErrorHandler.handle(e, st);
-  // failure is now a typed Failure
-}
-```
-
-## Best Practices
-
-1. **Always use the Repository pattern** with `RepositoryHandler` mixin
-2. **Use pattern matching** (`when`/`maybeWhen`) instead of type checks
-3. **Chain operations** using `map`, `then`, `thenAsync` instead of nested folds
-4. **Use `getOrElse`** for providing default values
-5. **Include StackTrace** in error handling for debugging
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 

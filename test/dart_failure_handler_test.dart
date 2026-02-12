@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:dart_failure_handler/dart_failure_handler.dart';
-import 'package:dio/dio.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -311,13 +309,7 @@ void main() {
     });
   });
 
-  group('ErrorHandler', () {
-    test('handles SocketException as NoInternetFailure', () {
-      final error = SocketException('Connection refused');
-      final failure = ErrorHandler.handle(error);
-      expect(failure, isA<NoInternetFailure>());
-    });
-
+  group('ErrorHandler (base)', () {
     test('handles TimeoutException as TimeoutFailure', () {
       final error = TimeoutException('Timed out');
       final failure = ErrorHandler.handle(error);
@@ -331,7 +323,6 @@ void main() {
     });
 
     test('handles TypeError as ParsingFailure', () {
-      // Create a TypeError by invalid type operation
       Object error;
       try {
         final dynamic value = 'not an int';
@@ -352,131 +343,69 @@ void main() {
       expect(failure.message, contains('Something went wrong'));
     });
 
-    group('DioException handling', () {
-      test('connectionError becomes NoInternetFailure', () {
-        final error = DioException(
-          type: DioExceptionType.connectionError,
-          requestOptions: RequestOptions(path: '/test'),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<NoInternetFailure>());
-      });
-
-      test('connectionTimeout becomes TimeoutFailure', () {
-        final error = DioException(
-          type: DioExceptionType.connectionTimeout,
-          requestOptions: RequestOptions(path: '/test'),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<TimeoutFailure>());
-      });
-
-      test('sendTimeout becomes TimeoutFailure', () {
-        final error = DioException(
-          type: DioExceptionType.sendTimeout,
-          requestOptions: RequestOptions(path: '/test'),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<TimeoutFailure>());
-      });
-
-      test('receiveTimeout becomes TimeoutFailure', () {
-        final error = DioException(
-          type: DioExceptionType.receiveTimeout,
-          requestOptions: RequestOptions(path: '/test'),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<TimeoutFailure>());
-      });
-
-      test('cancel becomes CancellationFailure', () {
-        final error = DioException(
-          type: DioExceptionType.cancel,
-          requestOptions: RequestOptions(path: '/test'),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<CancellationFailure>());
-      });
-
-      test('badResponse becomes ServerFailure with statusCode', () {
-        final error = DioException(
-          type: DioExceptionType.badResponse,
-          requestOptions: RequestOptions(path: '/test'),
-          response: Response(
-            statusCode: 404,
-            requestOptions: RequestOptions(path: '/test'),
-            data: {'message': 'User not found'},
-          ),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<ServerFailure>());
-        expect((failure as ServerFailure).statusCode, equals(404));
-        expect(failure.message, equals('User not found'));
-      });
-
-      test('badResponse extracts error field', () {
-        final error = DioException(
-          type: DioExceptionType.badResponse,
-          requestOptions: RequestOptions(path: '/test'),
-          response: Response(
-            statusCode: 500,
-            requestOptions: RequestOptions(path: '/test'),
-            data: {'error': 'Internal error'},
-          ),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<ServerFailure>());
-        expect(failure.message, equals('Internal error'));
-      });
-
-      test('badResponse extracts msg field', () {
-        final error = DioException(
-          type: DioExceptionType.badResponse,
-          requestOptions: RequestOptions(path: '/test'),
-          response: Response(
-            statusCode: 400,
-            requestOptions: RequestOptions(path: '/test'),
-            data: {'msg': 'Bad request'},
-          ),
-        );
-        final failure = ErrorHandler.handle(error);
-        expect(failure, isA<ServerFailure>());
-        expect(failure.message, equals('Bad request'));
-      });
+    test('preserves stack trace', () {
+      final error = Exception('test');
+      final st = StackTrace.current;
+      final failure = ErrorHandler.handle(error, st);
+      expect(failure.stackTrace, equals(st));
     });
   });
 
   group('RepositoryHandler', () {
-    late _TestRepository repository;
-
-    setUp(() {
-      repository = _TestRepository();
-    });
-
     test('call returns Right on success', () async {
+      final repository = _BaseRepository();
       final result = await repository.successCall();
       expect(result.isRight, isTrue);
       expect(result.right, equals(42));
     });
 
     test('call returns Left on exception', () async {
+      final repository = _BaseRepository();
       final result = await repository.failingCall();
       expect(result.isLeft, isTrue);
       expect(result.left, isA<UnknownFailure>());
     });
 
     test('call captures stack trace', () async {
+      final repository = _BaseRepository();
       final result = await repository.failingCall();
       expect(result.left.stackTrace, isNotNull);
+    });
+
+    test('uses default ErrorHandler.handle', () async {
+      final repository = _BaseRepository();
+      final result = await repository.timeoutCall();
+      expect(result.left, isA<TimeoutFailure>());
+    });
+
+    test('supports custom errorMapper', () async {
+      final repository = _CustomMapperRepository();
+      final result = await repository.failingCall();
+      expect(result.left, isA<ServerFailure>());
+      expect(result.left.message, equals('Custom mapped'));
     });
   });
 }
 
-// Test helper class
-class _TestRepository with RepositoryHandler {
+// Test helper: base repository with default error mapper
+class _BaseRepository with RepositoryHandler {
   Future<Either<Failure, int>> successCall() {
     return call(() async => 42);
   }
+
+  Future<Either<Failure, int>> failingCall() {
+    return call(() async => throw Exception('Test error'));
+  }
+
+  Future<Either<Failure, int>> timeoutCall() {
+    return call(() async => throw TimeoutException('Timed out'));
+  }
+}
+
+// Test helper: repository with custom error mapper
+class _CustomMapperRepository with RepositoryHandler {
+  @override
+  ErrorMapper get errorMapper => (error, st) => const ServerFailure(message: 'Custom mapped');
 
   Future<Either<Failure, int>> failingCall() {
     return call(() async => throw Exception('Test error'));

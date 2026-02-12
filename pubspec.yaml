@@ -1,6 +1,6 @@
 name: dart_failure_handler
-description: Professional Error Handling package for Flutter.
-version: 1.0.1
+description: Professional, HTTP-client agnostic error handling package for Dart/Flutter with Either pattern, typed Failures, and optional Dio support.
+version: 1.0.2
 # repository: https://github.com/my_org/my_repo
 
 environment:
