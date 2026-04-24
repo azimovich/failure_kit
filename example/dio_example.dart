@@ -47,15 +47,15 @@ class UserRepository with RepositoryHandler, DioRepositoryHandler {
   }
 }
 
-// --- Method 2: Using errorMapper override (alternative approach) ---
+// --- Method 2: Manual chain via errorMapperChain override ---
 class PostRepository with RepositoryHandler {
   final Dio _dio;
 
   PostRepository(this._dio);
 
-  /// Override errorMapper to use DioErrorHandler
   @override
-  ErrorMapper get errorMapper => DioErrorHandler.handle;
+  ErrorMapperChain get errorMapperChain =>
+      ErrorMapperChain.base.prepend(DioErrorMapper.handle);
 
   Future<Either<Failure, Map<String, dynamic>>> getPost(int id) {
     return call(() async {
@@ -83,14 +83,15 @@ void main() async {
       cancellation: (_) => print('Request was cancelled'),
       parsing: (_) => print('Failed to parse response'),
       unknown: (f) => print('Unknown error: ${f.message}'),
+      custom: (f) => print('Custom error: ${f.message}'),
     ),
     (user) => print('User: ${user.name} (${user.email})'),
   );
 
   // -----------------------------------------------------------------------
-  // Example 2: errorMapper override usage
+  // Example 2: errorMapperChain override usage
   // -----------------------------------------------------------------------
-  print('\n=== Example 2: errorMapper override ===');
+  print('\n=== Example 2: errorMapperChain override ===');
   final postRepo = PostRepository(dio);
   final postResult = await postRepo.getPost(1);
 
@@ -98,15 +99,40 @@ void main() async {
   print('Post title: $title');
 
   // -----------------------------------------------------------------------
-  // Example 3: Manual DioErrorHandler usage
+  // Example 3: Manual DioErrorMapper usage
   // -----------------------------------------------------------------------
-  print('\n=== Example 3: Manual DioErrorHandler ===');
+  print('\n=== Example 3: Manual DioErrorMapper ===');
   try {
     await dio.get('/nonexistent-endpoint-404');
   } catch (e, st) {
-    final failure = DioErrorHandler.handle(e, st);
+    final failure = DioErrorMapper.handle(e, st) ?? BaseErrorMapper.handle(e, st);
     print('Failure: $failure');
   }
+
+  // -----------------------------------------------------------------------
+  // Example 4: Dio + custom mapper chain
+  // -----------------------------------------------------------------------
+  print('\n=== Example 4: Dio + custom chain ===');
+  // Prepend auth error mapper before Dio mapper:
+  final chain = ErrorMapperChain.base
+      .prepend(DioErrorMapper.handle)
+      .prepend((e, st) {
+        if (e is DioException && e.response?.statusCode == 401) {
+          return const ServerFailure(message: 'Session expired', statusCode: 401);
+        }
+        return null;
+      });
+
+  final e401 = DioException(
+    type: DioExceptionType.badResponse,
+    requestOptions: RequestOptions(path: '/secure'),
+    response: Response(
+      statusCode: 401,
+      requestOptions: RequestOptions(path: '/secure'),
+    ),
+  );
+  final authFailure = chain.handle(e401, StackTrace.current);
+  print('Auth failure: ${authFailure.message}');
 
   dio.close();
 }

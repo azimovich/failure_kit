@@ -1,7 +1,7 @@
 /// Dio-specific extensions for dart_failure_handler.
 ///
-/// This library re-exports everything from the core library
-/// and adds Dio-specific error handling support.
+/// Re-exports everything from the core library and adds Dio-specific
+/// error handling support via [DioErrorMapper] and [DioRepositoryHandler].
 ///
 /// Usage:
 /// ```dart
@@ -14,5 +14,5 @@
 library;
 
 export 'dart_failure_handler.dart';
-export 'src/dio_error_handler.dart';
+export 'src/dio_error_mapper.dart';
 export 'src/dio_repository_mixin.dart';

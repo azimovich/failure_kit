@@ -1,3 +1,50 @@
+## 2.0.0
+
+### Breaking Changes
+
+- `Failure` is no longer `sealed` — it is now `abstract`. User-defined subclasses are now supported outside the package.
+- `when()` requires a new `custom:` parameter — handles any user-defined `Failure` subclass. Update all existing `when()` calls.
+- `ErrorMapper` typedef now returns `Failure?` (was `Failure`). Return `null` to pass the error to the next mapper in the chain.
+- `RepositoryHandler.errorMapper` getter removed — replaced by `errorMapperChain` (`ErrorMapperChain`).
+- `ErrorHandler` class renamed to `BaseErrorMapper`. Update all direct usages.
+- `DioErrorHandler` class renamed to `DioErrorMapper`. Update all direct usages.
+- File `lib/src/error_handler.dart` replaced by `lib/src/error_mapper.dart`.
+- File `lib/src/dio_error_handler.dart` replaced by `lib/src/dio_error_mapper.dart`.
+
+### Migration Guide
+
+```dart
+// Before
+ErrorMapper get errorMapper => DioErrorHandler.handle;
+
+// After
+ErrorMapperChain get errorMapperChain =>
+    ErrorMapperChain.base.prepend(DioErrorMapper.handle);
+
+// Before
+ErrorHandler.handle(error, st)
+
+// After
+BaseErrorMapper.handle(error, st)
+
+// Before
+failure.when(server: ..., network: ..., unknown: ...)
+
+// After — add custom: case
+failure.when(server: ..., network: ..., unknown: ..., custom: (f) => ...)
+```
+
+### Added
+
+- `ErrorMapperChain` — interceptor-style chain of `ErrorMapper`s. First non-null result wins; falls back to `BaseErrorMapper`.
+- `ErrorMapperChain.prepend(mapper)` — add mapper at the front of the chain.
+- `ErrorMapperChain.append(mapper)` — add mapper at the end of the chain.
+- `ErrorMapperChain.base` — empty chain using only `BaseErrorMapper`.
+- `ErrorMapperChain.of(mapper)` — single-mapper chain.
+- `Failure.when(custom:)` — handles any user-defined `Failure` subclass via wildcard case.
+- `DioErrorMapper` — Dio-specific mapper conforming to nullable `ErrorMapper` signature.
+- `BaseErrorMapper` — renamed from `ErrorHandler`; handles standard Dart exceptions as final fallback.
+
 ## 1.1.0
 
 ### Fixed

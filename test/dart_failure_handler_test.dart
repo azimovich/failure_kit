@@ -239,6 +239,7 @@ void main() {
           cancellation: (_) => 'cancelled',
           parsing: (_) => 'parsing',
           unknown: (_) => 'unknown',
+          custom: (_) => 'custom',
         );
         expect(result, equals('server: 500'));
       });
@@ -252,6 +253,7 @@ void main() {
           cancellation: (_) => 'cancelled',
           parsing: (_) => 'parsing',
           unknown: (_) => 'unknown',
+          custom: (_) => 'custom',
         );
         expect(result, equals('network'));
       });
@@ -265,6 +267,7 @@ void main() {
           cancellation: (_) => 'cancelled',
           parsing: (_) => 'parsing',
           unknown: (_) => 'unknown',
+          custom: (_) => 'custom',
         );
         expect(result, equals('timeout'));
       });
@@ -278,6 +281,7 @@ void main() {
           cancellation: (_) => 'cancelled',
           parsing: (_) => 'parsing',
           unknown: (_) => 'unknown',
+          custom: (_) => 'custom',
         );
         expect(result, equals('cancelled'));
       });
@@ -291,6 +295,7 @@ void main() {
           cancellation: (_) => 'cancelled',
           parsing: (_) => 'parsing',
           unknown: (_) => 'unknown',
+          custom: (_) => 'custom',
         );
         expect(result, equals('parsing'));
       });
@@ -304,8 +309,23 @@ void main() {
           cancellation: (_) => 'cancelled',
           parsing: (_) => 'parsing',
           unknown: (f) => 'unknown: ${f.message}',
+          custom: (_) => 'custom',
         );
         expect(result, equals('unknown: something went wrong'));
+      });
+
+      test('routes user-defined Failure subclass to custom:', () {
+        final failure = _CustomFailure();
+        final result = failure.when(
+          server: (_) => 'server',
+          network: (_) => 'network',
+          timeout: (_) => 'timeout',
+          cancellation: (_) => 'cancelled',
+          parsing: (_) => 'parsing',
+          unknown: (_) => 'unknown',
+          custom: (f) => 'custom: ${f.message}',
+        );
+        expect(result, equals('custom: custom error'));
       });
     });
 
@@ -326,6 +346,15 @@ void main() {
           orElse: (f) => 'fallback: ${f.message}',
         );
         expect(result, equals('fallback: Server error'));
+      });
+
+      test('user-defined Failure subclass falls through to orElse', () {
+        final failure = _CustomFailure();
+        final result = failure.maybeWhen(
+          server: (_) => 'server',
+          orElse: (f) => 'orElse: ${f.message}',
+        );
+        expect(result, equals('orElse: custom error'));
       });
     });
 
@@ -375,16 +404,16 @@ void main() {
     });
   });
 
-  group('ErrorHandler (base)', () {
+  group('BaseErrorMapper', () {
     test('handles TimeoutException as TimeoutFailure', () {
       final error = TimeoutException('Timed out');
-      final failure = ErrorHandler.handle(error);
+      final failure = BaseErrorMapper.handle(error, StackTrace.current);
       expect(failure, isA<TimeoutFailure>());
     });
 
     test('handles FormatException as ParsingFailure', () {
       final error = const FormatException('Invalid format');
-      final failure = ErrorHandler.handle(error);
+      final failure = BaseErrorMapper.handle(error, StackTrace.current);
       expect(failure, isA<ParsingFailure>());
     });
 
@@ -398,13 +427,13 @@ void main() {
       } on TypeError catch (e) {
         error = e;
       }
-      final failure = ErrorHandler.handle(error);
+      final failure = BaseErrorMapper.handle(error, StackTrace.current);
       expect(failure, isA<ParsingFailure>());
     });
 
     test('handles unknown error as UnknownFailure', () {
       final error = Exception('Something went wrong');
-      final failure = ErrorHandler.handle(error);
+      final failure = BaseErrorMapper.handle(error, StackTrace.current);
       expect(failure, isA<UnknownFailure>());
       expect(failure.message, contains('Something went wrong'));
     });
@@ -412,8 +441,82 @@ void main() {
     test('preserves stack trace', () {
       final error = Exception('test');
       final st = StackTrace.current;
-      final failure = ErrorHandler.handle(error, st);
+      final failure = BaseErrorMapper.handle(error, st);
       expect(failure.stackTrace, equals(st));
+    });
+  });
+
+  group('ErrorMapperChain', () {
+    test('base chain falls through to BaseErrorMapper', () {
+      final failure = ErrorMapperChain.base.handle(
+        const FormatException('bad'),
+        StackTrace.current,
+      );
+      expect(failure, isA<ParsingFailure>());
+    });
+
+    test('prepend mapper runs first', () {
+      final chain = ErrorMapperChain.base.prepend(
+        (e, st) => e is FormatException
+            ? const ServerFailure(message: 'intercepted')
+            : null,
+      );
+      final failure = chain.handle(
+        const FormatException('bad'),
+        StackTrace.current,
+      );
+      expect(failure, isA<ServerFailure>());
+      expect(failure.message, equals('intercepted'));
+    });
+
+    test('null from mapper passes to next', () {
+      final chain = ErrorMapperChain.base
+          .prepend((e, st) => null) // always skip
+          .prepend((e, st) => null); // always skip
+      final failure = chain.handle(
+        const FormatException('bad'),
+        StackTrace.current,
+      );
+      // Falls through to BaseErrorMapper
+      expect(failure, isA<ParsingFailure>());
+    });
+
+    test('prepend order: first prepended runs last', () {
+      final calls = <String>[];
+      final chain = ErrorMapperChain.base
+          .prepend((e, st) {
+            calls.add('second');
+            return null;
+          })
+          .prepend((e, st) {
+            calls.add('first');
+            return null;
+          });
+      chain.handle(Exception('x'), StackTrace.current);
+      expect(calls, equals(['first', 'second']));
+    });
+
+    test('append adds mapper after existing ones', () {
+      final calls = <String>[];
+      final chain = ErrorMapperChain.base
+          .prepend((e, st) {
+            calls.add('first');
+            return null;
+          })
+          .append((e, st) {
+            calls.add('appended');
+            return null;
+          });
+      chain.handle(Exception('x'), StackTrace.current);
+      expect(calls, equals(['first', 'appended']));
+    });
+
+    test('custom Failure from user mapper is returned', () {
+      final chain = ErrorMapperChain.base.prepend(
+        (e, st) => e is Exception ? _CustomFailure() : null,
+      );
+      final failure = chain.handle(Exception('x'), StackTrace.current);
+      expect(failure, isA<_CustomFailure>());
     });
   });
 
@@ -438,13 +541,13 @@ void main() {
       expect(result.left.stackTrace, isNotNull);
     });
 
-    test('uses default ErrorHandler.handle', () async {
+    test('uses BaseErrorMapper by default', () async {
       final repository = _BaseRepository();
       final result = await repository.timeoutCall();
       expect(result.left, isA<TimeoutFailure>());
     });
 
-    test('supports custom errorMapper', () async {
+    test('custom errorMapperChain intercepts errors', () async {
       final repository = _CustomMapperRepository();
       final result = await repository.failingCall();
       expect(result.left, isA<ServerFailure>());
@@ -453,7 +556,12 @@ void main() {
   });
 }
 
-// Test helper: base repository with default error mapper
+// ---------- Test helpers ----------
+
+class _CustomFailure extends Failure {
+  _CustomFailure() : super(message: 'custom error');
+}
+
 class _BaseRepository with RepositoryHandler {
   Future<Either<Failure, int>> successCall() {
     return call(() async => 42);
@@ -468,10 +576,11 @@ class _BaseRepository with RepositoryHandler {
   }
 }
 
-// Test helper: repository with custom error mapper
 class _CustomMapperRepository with RepositoryHandler {
   @override
-  ErrorMapper get errorMapper => (error, st) => const ServerFailure(message: 'Custom mapped');
+  ErrorMapperChain get errorMapperChain => ErrorMapperChain.base.prepend(
+        (error, st) => const ServerFailure(message: 'Custom mapped'),
+      );
 
   Future<Either<Failure, int>> failingCall() {
     return call(() async => throw Exception('Test error'));

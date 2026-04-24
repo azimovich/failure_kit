@@ -1,51 +1,49 @@
 import 'dart:io';
 import 'failure.dart';
-import 'error_handler.dart';
+import 'error_mapper.dart';
 import 'package:dio/dio.dart';
 
-/// Dio-specific error handler that extends [ErrorHandler] with Dio support.
+/// Dio-specific [ErrorMapper] — maps [DioException] and [SocketException]
+/// to typed [Failure] objects.
 ///
-/// Handles all [DioException] types and [SocketException] in addition
-/// to the base Dart exceptions handled by [ErrorHandler].
+/// Returns `null` for any error that is not Dio-related, allowing the next
+/// mapper in the chain (or [BaseErrorMapper]) to handle it.
 ///
 /// Import via:
 /// ```dart
 /// import 'package:dart_failure_handler/dio.dart';
 /// ```
 ///
-/// Handles the following exception types:
-/// - [DioException] → [ServerFailure], [NoInternetFailure], [TimeoutFailure], or [CancellationFailure]
+/// Handles:
+/// - [DioException] → [ServerFailure], [NoInternetFailure], [TimeoutFailure],
+///   or [CancellationFailure]
 /// - [SocketException] → [NoInternetFailure]
-/// - All other exceptions → delegated to [ErrorHandler.handle]
+/// - Anything else → `null` (not handled — passed to next mapper)
 ///
-/// Example:
+/// Example — manual use:
 /// ```dart
-/// try {
-///   await dio.get('/api/data');
-/// } catch (e, st) {
-///   final failure = DioErrorHandler.handle(e, st);
-/// }
+/// final failure = DioErrorMapper.handle(e, st) ?? BaseErrorMapper.handle(e, st);
 /// ```
-class DioErrorHandler {
-  const DioErrorHandler._();
+///
+/// Example — via chain:
+/// ```dart
+/// ErrorMapperChain.base.prepend(DioErrorMapper.handle)
+/// ```
+class DioErrorMapper {
+  const DioErrorMapper._();
 
-  /// Maps Dio and socket exceptions to typed [Failure] objects.
-  ///
-  /// Falls back to [ErrorHandler.handle] for non-Dio exceptions.
-  static Failure handle(Object error, [StackTrace? stackTrace]) {
+  /// Conforms to [ErrorMapper]. Returns `null` for non-Dio errors.
+  static Failure? handle(Object error, StackTrace stackTrace) {
     if (error is DioException) {
       return _handleDioError(error, stackTrace);
     }
-
     if (error is SocketException) {
       return NoInternetFailure(cause: error, stackTrace: stackTrace);
     }
-
-    // Delegate to base ErrorHandler for other exceptions
-    return ErrorHandler.handle(error, stackTrace);
+    return null;
   }
 
-  static Failure _handleDioError(DioException error, StackTrace? st) {
+  static Failure _handleDioError(DioException error, StackTrace st) {
     if (error.error is SocketException) {
       return NoInternetFailure(cause: error, stackTrace: st);
     }
@@ -76,14 +74,18 @@ class DioErrorHandler {
     };
   }
 
-  static Failure _handleServerError(DioException error, StackTrace? st) {
+  static Failure _handleServerError(DioException error, StackTrace st) {
     final response = error.response;
     final statusCode = response?.statusCode;
-    String message = statusCode != null ? 'Server error ($statusCode)' : 'Unexpected server error';
+    String message =
+        statusCode != null ? 'Server error ($statusCode)' : 'Unexpected server error';
 
     if (response?.data is Map) {
       final data = response!.data as Map;
-      message = data['message']?.toString() ?? data['error']?.toString() ?? data['msg']?.toString() ?? message;
+      message = data['message']?.toString() ??
+          data['error']?.toString() ??
+          data['msg']?.toString() ??
+          message;
     }
 
     return ServerFailure(

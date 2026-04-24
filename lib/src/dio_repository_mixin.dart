@@ -1,13 +1,12 @@
-import 'error_handler.dart';
+import 'error_mapper.dart';
 import 'repository_mixin.dart';
-import 'dio_error_handler.dart';
+import 'dio_error_mapper.dart';
 
-/// Convenience mixin for repositories that use Dio.
+/// Convenience mixin that prepends [DioErrorMapper] to the [errorMapperChain].
 ///
-/// This is a shorthand for overriding [errorMapper] with [DioErrorHandler.handle]
-/// in [RepositoryHandler].
+/// Apply alongside [RepositoryHandler] in any Dio-backed repository.
 ///
-/// Example:
+/// Example — Dio only:
 /// ```dart
 /// class UserRepository with RepositoryHandler, DioRepositoryHandler {
 ///   final Dio _dio;
@@ -21,8 +20,17 @@ import 'dio_error_handler.dart';
 ///   }
 /// }
 /// ```
+///
+/// Example — Dio + custom mapper:
+/// ```dart
+/// class UserRepository with RepositoryHandler, DioRepositoryHandler {
+///   @override
+///   ErrorMapperChain get errorMapperChain =>
+///       super.errorMapperChain.prepend(MyAuthErrorMapper.handle);
+/// }
+/// ```
 mixin DioRepositoryHandler on RepositoryHandler {
-  /// Overrides [RepositoryHandler.errorMapper] to use [DioErrorHandler.handle].
   @override
-  ErrorMapper get errorMapper => DioErrorHandler.handle;
+  ErrorMapperChain get errorMapperChain =>
+      ErrorMapperChain.base.prepend(DioErrorMapper.handle);
 }

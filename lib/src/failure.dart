@@ -5,7 +5,7 @@ import 'package:meta/meta.dart';
 /// This sealed class provides a type-safe way to handle errors in your application.
 /// All failure types extend this class and can be pattern matched using [when] or [maybeWhen].
 @immutable
-sealed class Failure {
+abstract class Failure {
   /// Human-readable error message
   final String message;
 
@@ -38,6 +38,7 @@ sealed class Failure {
     required T Function(CancellationFailure f) cancellation,
     required T Function(ParsingFailure f) parsing,
     required T Function(UnknownFailure f) unknown,
+    required T Function(Failure f) custom,
   }) {
     return switch (this) {
       ServerFailure f => server(f),
@@ -46,6 +47,7 @@ sealed class Failure {
       CancellationFailure f => cancellation(f),
       ParsingFailure f => parsing(f),
       UnknownFailure f => unknown(f),
+      _ => custom(this),
     };
   }
 
@@ -76,6 +78,7 @@ sealed class Failure {
       CancellationFailure f => cancellation?.call(f) ?? orElse(f),
       ParsingFailure f => parsing?.call(f) ?? orElse(f),
       UnknownFailure f => unknown?.call(f) ?? orElse(f),
+      _ => orElse(this),
     };
   }
 

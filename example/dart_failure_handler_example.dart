@@ -27,18 +27,21 @@ class DataService with RepositoryHandler {
   }
 }
 
-// --- Example: Custom error mapper ---
+// --- Example: Custom error mapper chain ---
 class CustomService with RepositoryHandler {
   @override
-  ErrorMapper get errorMapper => _customMapper;
+  ErrorMapperChain get errorMapperChain =>
+      ErrorMapperChain.base.prepend(_customMapper);
 
-  static Failure _customMapper(Object error, StackTrace st) {
-    // Map your custom exceptions here
+  static Failure? _customMapper(Object error, StackTrace st) {
     if (error is FormatException) {
-      return ParsingFailure(message: 'Custom: ${error.message}', cause: error, stackTrace: st);
+      return ParsingFailure(
+        message: 'Custom: ${error.message}',
+        cause: error,
+        stackTrace: st,
+      );
     }
-    // Fallback to base handler
-    return ErrorHandler.handle(error, st);
+    return null; // pass to BaseErrorMapper
   }
 
   Future<Either<Failure, int>> calculate() {
@@ -46,6 +49,15 @@ class CustomService with RepositoryHandler {
       throw FormatException('bad data');
     });
   }
+}
+
+// --- Example: User-defined Failure subclass ---
+class DatabaseFailure extends Failure {
+  const DatabaseFailure({
+    super.message = 'Database error',
+    super.cause,
+    super.stackTrace,
+  });
 }
 
 void main() async {
@@ -74,6 +86,7 @@ void main() async {
       cancellation: (_) => print('Cancelled'),
       parsing: (f) => print('Parsing error: ${f.message}'),
       unknown: (f) => print('Unknown: ${f.message}'),
+      custom: (f) => print('Custom: ${f.message}'),
     ),
     (data) => print('Data: $data'),
   );
@@ -131,10 +144,40 @@ void main() async {
   print('leftOrNull on failure: ${failureEither.leftOrNull?.message}');
 
   // -----------------------------------------------------------------------
-  // Example 8: Custom error mapper
+  // Example 8: Custom ErrorMapper chain
   // -----------------------------------------------------------------------
-  print('\n=== Example 8: Custom ErrorMapper ===');
+  print('\n=== Example 8: Custom ErrorMapperChain ===');
   final customService = CustomService();
   final customResult = await customService.calculate();
   print('Custom failure: ${customResult.left.message}');
+
+  // -----------------------------------------------------------------------
+  // Example 9: User-defined Failure subclass + when(custom:)
+  // -----------------------------------------------------------------------
+  print('\n=== Example 9: User-defined Failure with when(custom:) ===');
+  final dbChain = ErrorMapperChain.base.prepend((e, st) {
+    if (e is FormatException) {
+      return DatabaseFailure(
+        message: 'DB parse error: ${e.message}',
+        cause: e,
+        stackTrace: st,
+      );
+    }
+    return null;
+  });
+
+  final dbFailure = dbChain.handle(
+    const FormatException('schema mismatch'),
+    StackTrace.current,
+  );
+  final dbMsg = dbFailure.when(
+    server: (_) => 'server',
+    network: (_) => 'network',
+    timeout: (_) => 'timeout',
+    cancellation: (_) => 'cancelled',
+    parsing: (_) => 'parsing',
+    unknown: (_) => 'unknown',
+    custom: (f) => f is DatabaseFailure ? 'DB: ${f.message}' : f.message,
+  );
+  print('DB failure: $dbMsg');
 }
