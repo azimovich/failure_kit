@@ -3,7 +3,7 @@ import 'failure.dart';
 
 /// Maps an error to a [Failure], or returns `null` if this mapper
 /// does not handle the given error (passes it to the next in the chain).
-typedef ErrorMapper = Failure? Function(Object error, StackTrace stackTrace);
+typedef FailureMapper = Failure? Function(Object error, StackTrace stackTrace);
 
 /// Built-in base mapper — handles standard Dart exceptions.
 ///
@@ -13,8 +13,8 @@ typedef ErrorMapper = Failure? Function(Object error, StackTrace stackTrace);
 /// - [TimeoutException] → [TimeoutFailure]
 /// - [TypeError], [FormatException] → [ParsingFailure]
 /// - Anything else → [UnknownFailure]
-class BaseErrorMapper {
-  const BaseErrorMapper._();
+class BaseFailureMapper {
+  const BaseFailureMapper._();
 
   static Failure handle(Object error, StackTrace stackTrace) {
     if (error is TimeoutException) {
@@ -31,43 +31,43 @@ class BaseErrorMapper {
   }
 }
 
-/// An ordered chain of [ErrorMapper]s.
+/// An ordered chain of [FailureMapper]s.
 ///
 /// Each mapper is tried in order. The first non-null result wins.
-/// If every mapper returns `null`, falls back to [BaseErrorMapper.handle].
+/// If every mapper returns `null`, falls back to [BaseFailureMapper.handle].
 ///
 /// Example — Dio + Drift + base:
 /// ```dart
-/// ErrorMapperChain.base
-///     .prepend(DioErrorMapper.handle)
-///     .prepend(DriftErrorMapper.handle)
+/// FailureMapperChain.base
+///     .prepend(DioFailureMapper.handle)
+///     .prepend(DriftFailureMapper.handle)
 /// ```
-class ErrorMapperChain {
-  final List<ErrorMapper> _mappers;
+class FailureMapperChain {
+  final List<FailureMapper> _mappers;
 
-  const ErrorMapperChain(this._mappers);
+  const FailureMapperChain(this._mappers);
 
   /// Chain containing only the built-in base fallback.
-  static const ErrorMapperChain base = ErrorMapperChain([]);
+  static const FailureMapperChain base = FailureMapperChain([]);
 
   /// Convenience constructor for a single custom mapper.
-  factory ErrorMapperChain.of(ErrorMapper mapper) => ErrorMapperChain([mapper]);
+  factory FailureMapperChain.of(FailureMapper mapper) => FailureMapperChain([mapper]);
 
   /// Returns a new chain with [mapper] inserted at the front (runs first).
-  ErrorMapperChain prepend(ErrorMapper mapper) =>
-      ErrorMapperChain([mapper, ..._mappers]);
+  FailureMapperChain prepend(FailureMapper mapper) =>
+      FailureMapperChain([mapper, ..._mappers]);
 
   /// Returns a new chain with [mapper] appended at the end (runs last before base).
-  ErrorMapperChain append(ErrorMapper mapper) =>
-      ErrorMapperChain([..._mappers, mapper]);
+  FailureMapperChain append(FailureMapper mapper) =>
+      FailureMapperChain([..._mappers, mapper]);
 
   /// Runs mappers in order. Returns the first non-null result.
-  /// Falls back to [BaseErrorMapper.handle] if all return null.
+  /// Falls back to [BaseFailureMapper.handle] if all return null.
   Failure handle(Object error, StackTrace stackTrace) {
     for (final mapper in _mappers) {
       final result = mapper(error, stackTrace);
       if (result != null) return result;
     }
-    return BaseErrorMapper.handle(error, stackTrace);
+    return BaseFailureMapper.handle(error, stackTrace);
   }
 }

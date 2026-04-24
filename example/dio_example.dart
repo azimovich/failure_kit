@@ -1,13 +1,13 @@
 // ignore_for_file: avoid_print
 
-import 'package:dart_failure_handler/dio.dart';
+import 'package:failure_kit/dio.dart';
 import 'package:dio/dio.dart';
 
 // =============================================================================
 // This example shows usage WITH Dio
 //
-// Import 'package:dart_failure_handler/dio.dart' instead of
-// 'package:dart_failure_handler/dart_failure_handler.dart'
+// Import 'package:failure_kit/dio.dart' instead of
+// 'package:failure_kit/failure_kit.dart'
 // =============================================================================
 
 class User {
@@ -26,8 +26,8 @@ class User {
   }
 }
 
-// --- Method 1: Using DioRepositoryHandler mixin ---
-class UserRepository with RepositoryHandler, DioRepositoryHandler {
+// --- Method 1: Using DioFailureGuard mixin ---
+class UserRepository with FailureGuard, DioFailureGuard {
   final Dio _dio;
 
   UserRepository(this._dio);
@@ -47,15 +47,15 @@ class UserRepository with RepositoryHandler, DioRepositoryHandler {
   }
 }
 
-// --- Method 2: Manual chain via errorMapperChain override ---
-class PostRepository with RepositoryHandler {
+// --- Method 2: Manual chain via failureChain override ---
+class PostRepository with FailureGuard {
   final Dio _dio;
 
   PostRepository(this._dio);
 
   @override
-  ErrorMapperChain get errorMapperChain =>
-      ErrorMapperChain.base.prepend(DioErrorMapper.handle);
+  FailureMapperChain get failureChain =>
+      FailureMapperChain.base.prepend(DioFailureMapper.handle);
 
   Future<Either<Failure, Map<String, dynamic>>> getPost(int id) {
     return call(() async {
@@ -69,7 +69,7 @@ void main() async {
   final dio = Dio(BaseOptions(baseUrl: 'https://jsonplaceholder.typicode.com'));
 
   // -----------------------------------------------------------------------
-  // Example 1: DioRepositoryHandler mixin usage
+  // Example 1: DioFailureGuard mixin usage
   // -----------------------------------------------------------------------
   print('=== Example 1: Dio Repository with mixin ===');
   final userRepo = UserRepository(dio);
@@ -89,9 +89,9 @@ void main() async {
   );
 
   // -----------------------------------------------------------------------
-  // Example 2: errorMapperChain override usage
+  // Example 2: failureChain override usage
   // -----------------------------------------------------------------------
-  print('\n=== Example 2: errorMapperChain override ===');
+  print('\n=== Example 2: failureChain override ===');
   final postRepo = PostRepository(dio);
   final postResult = await postRepo.getPost(1);
 
@@ -99,13 +99,13 @@ void main() async {
   print('Post title: $title');
 
   // -----------------------------------------------------------------------
-  // Example 3: Manual DioErrorMapper usage
+  // Example 3: Manual DioFailureMapper usage
   // -----------------------------------------------------------------------
-  print('\n=== Example 3: Manual DioErrorMapper ===');
+  print('\n=== Example 3: Manual DioFailureMapper ===');
   try {
     await dio.get('/nonexistent-endpoint-404');
   } catch (e, st) {
-    final failure = DioErrorMapper.handle(e, st) ?? BaseErrorMapper.handle(e, st);
+    final failure = DioFailureMapper.handle(e, st) ?? BaseFailureMapper.handle(e, st);
     print('Failure: $failure');
   }
 
@@ -113,9 +113,8 @@ void main() async {
   // Example 4: Dio + custom mapper chain
   // -----------------------------------------------------------------------
   print('\n=== Example 4: Dio + custom chain ===');
-  // Prepend auth error mapper before Dio mapper:
-  final chain = ErrorMapperChain.base
-      .prepend(DioErrorMapper.handle)
+  final chain = FailureMapperChain.base
+      .prepend(DioFailureMapper.handle)
       .prepend((e, st) {
         if (e is DioException && e.response?.statusCode == 401) {
           return const ServerFailure(message: 'Session expired', statusCode: 401);

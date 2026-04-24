@@ -1,6 +1,6 @@
-# dart_failure_handler
+# failure_kit
 
-A professional, HTTP-client agnostic error handling package for Dart/Flutter applications with optional [Dio](https://pub.dev/packages/dio) support.
+HTTP-client agnostic error handling for Dart/Flutter — Either pattern, typed Failures, pluggable mapper chain, and optional [Dio](https://pub.dev/packages/dio) support.
 
 [![Dart](https://img.shields.io/badge/Dart-3.0+-blue.svg)](https://dart.dev)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -10,21 +10,19 @@ A professional, HTTP-client agnostic error handling package for Dart/Flutter app
 - 🎯 **Type-safe error handling** with extensible `Failure` classes
 - 🔄 **Either pattern** for functional error management (`Left` for failures, `Right` for success)
 - 🔌 **HTTP-client agnostic** — works with Dio, http, Chopper, or any HTTP client
-- 🌐 **Optional Dio support** via `package:dart_failure_handler/dio.dart`
+- 🌐 **Optional Dio support** via `package:failure_kit/dio.dart`
 - 🎨 **Pattern matching** with `when()` and `maybeWhen()` methods
 - ⚡ **Async support** with `mapAsync()`, `thenAsync()` and more
-- 🧩 **Interceptor-style error chain** — add your own mappers without touching the package
+- 🧩 **Interceptor-style mapper chain** — add your own mappers without touching the package
 
 ## Installation
 
-Add this to your `pubspec.yaml`:
-
 ```yaml
 dependencies:
-  dart_failure_handler:
+  failure_kit:
     git:
-      url: https://github.com/azimovich/my_dart_failure_handler.git
-      ref: version/2.0.0
+      url: https://github.com/azimovich/failure_kit.git
+      ref: version/3.0.0
 ```
 
 ## Quick Start
@@ -33,18 +31,18 @@ dependencies:
 
 ```dart
 // Core (any HTTP client) — no Dio dependency in your code
-import 'package:dart_failure_handler/dart_failure_handler.dart';
+import 'package:failure_kit/failure_kit.dart';
 
 // OR with Dio support — includes everything from core + Dio handlers
-import 'package:dart_failure_handler/dio.dart';
+import 'package:failure_kit/dio.dart';
 ```
 
-### Basic Repository (any HTTP client)
+### Basic usage (any HTTP client)
 
 ```dart
-import 'package:dart_failure_handler/dart_failure_handler.dart';
+import 'package:failure_kit/failure_kit.dart';
 
-class UserRepository with RepositoryHandler {
+class UserRepository with FailureGuard {
   final MyHttpClient _client;
   UserRepository(this._client);
 
@@ -57,14 +55,14 @@ class UserRepository with RepositoryHandler {
 }
 ```
 
-### Dio Repository (with Dio support)
+### Dio usage
 
-**Method 1: Using `DioRepositoryHandler` mixin**
+**Method 1: `DioFailureGuard` mixin**
 
 ```dart
-import 'package:dart_failure_handler/dio.dart';
+import 'package:failure_kit/dio.dart';
 
-class UserRepository with RepositoryHandler, DioRepositoryHandler {
+class UserRepository with FailureGuard, DioFailureGuard {
   final Dio _dio;
   UserRepository(this._dio);
 
@@ -77,18 +75,18 @@ class UserRepository with RepositoryHandler, DioRepositoryHandler {
 }
 ```
 
-**Method 2: Override `errorMapperChain`**
+**Method 2: Override `failureChain`**
 
 ```dart
-import 'package:dart_failure_handler/dio.dart';
+import 'package:failure_kit/dio.dart';
 
-class UserRepository with RepositoryHandler {
+class UserRepository with FailureGuard {
   final Dio _dio;
   UserRepository(this._dio);
 
   @override
-  ErrorMapperChain get errorMapperChain =>
-      ErrorMapperChain.base.prepend(DioErrorMapper.handle);
+  FailureMapperChain get failureChain =>
+      FailureMapperChain.base.prepend(DioFailureMapper.handle);
 
   Future<Either<Failure, User>> getUser(int id) {
     return call(() async {
@@ -128,7 +126,7 @@ result.fold(
 final message = failure.maybeWhen(
   server: (f) => 'Error ${f.statusCode}',
   network: (_) => 'Check your connection',
-  orElse: (f) => f.message, // catches all unhandled types including custom
+  orElse: (f) => f.message,
 );
 
 // Option 4: getOrElse
@@ -157,7 +155,7 @@ class DatabaseFailure extends Failure {
 A mapper returns `Failure?` — return `null` to pass the error to the next mapper in the chain:
 
 ```dart
-class DriftErrorMapper {
+class DriftFailureMapper {
   static Failure? handle(Object error, StackTrace st) {
     if (error is InvalidDataException) {
       return DatabaseFailure(message: error.message, cause: error, stackTrace: st);
@@ -173,10 +171,10 @@ class DriftErrorMapper {
 ### Registering the mapper via chain
 
 ```dart
-class UserLocalRepository with RepositoryHandler {
+class UserLocalRepository with FailureGuard {
   @override
-  ErrorMapperChain get errorMapperChain =>
-      ErrorMapperChain.base.prepend(DriftErrorMapper.handle);
+  FailureMapperChain get failureChain =>
+      FailureMapperChain.base.prepend(DriftFailureMapper.handle);
 
   Future<Either<Failure, User>> getUser(int id) =>
       call(() async => _dao.userById(id));
@@ -186,31 +184,31 @@ class UserLocalRepository with RepositoryHandler {
 ### Combining multiple mappers (Dio + Drift + custom)
 
 ```dart
-class UserRepository with RepositoryHandler, DioRepositoryHandler {
+class UserRepository with FailureGuard, DioFailureGuard {
   @override
-  ErrorMapperChain get errorMapperChain => super.errorMapperChain
-      .prepend(DriftErrorMapper.handle)   // local DB — checked first
-      .prepend(AuthErrorMapper.handle);   // auth — checked before DB
+  FailureMapperChain get failureChain => super.failureChain
+      .prepend(DriftFailureMapper.handle)   // local DB — checked first
+      .prepend(AuthFailureMapper.handle);   // auth — checked before DB
 }
 ```
 
-Chain runs top to bottom. First non-null result wins. Falls back to `BaseErrorMapper` if all return null.
+Chain runs top to bottom. First non-null result wins. Falls back to `BaseFailureMapper` if all return null.
 
 ## Architecture
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│   dart_failure_handler.dart  (Core - no Dio)     │
+│   failure_kit.dart  (Core - no Dio)              │
 │                                                   │
 │   Either<L, R>    Failure (abstract)              │
 │   Left / Right    ServerFailure                   │
 │                   NoInternetFailure               │
-│   BaseErrorMapper TimeoutFailure                  │
-│   ErrorMapper     CancellationFailure             │
-│   ErrorMapperChain ParsingFailure                 │
+│   BaseFailureMapper  TimeoutFailure               │
+│   FailureMapper      CancellationFailure          │
+│   FailureMapperChain ParsingFailure               │
 │                   UnknownFailure                  │
-│   RepositoryHandler                               │
-│   (pluggable errorMapperChain)                    │
+│   FailureGuard                                    │
+│   (pluggable failureChain)                        │
 └─────────────────────────────────────────────────┘
                        │
                        │ extends
@@ -218,7 +216,7 @@ Chain runs top to bottom. First non-null result wins. Falls back to `BaseErrorMa
 ┌─────────────────────────────────────────────────┐
 │          dio.dart  (Dio support)                  │
 │                                                   │
-│   DioErrorMapper      DioRepositoryHandler        │
+│   DioFailureMapper    DioFailureGuard             │
 │   (returns null for non-Dio errors)               │
 │   (delegates to chain for everything else)        │
 └─────────────────────────────────────────────────┘
@@ -235,6 +233,13 @@ Chain runs top to bottom. First non-null result wins. Falls back to `BaseErrorMa
 | `ParsingFailure`      | Data parsing errors         | JSON parse errors, TypeError    |
 | `UnknownFailure`      | Unexpected errors           | Any other exception             |
 | Your custom type      | Any domain-specific error   | Drift, Hive, GraphQL, etc.      |
+
+`ServerFailure` also carries a `data` field (`Object?`) with the raw response body for domain-specific field extraction:
+
+```dart
+final data = serverFailure.data as Map?;
+final errorKey = data?['error.key'] as String?;
+```
 
 ## Either API Reference
 

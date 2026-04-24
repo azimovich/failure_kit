@@ -1,6 +1,6 @@
-name: dart_failure_handler
-description: Professional, HTTP-client agnostic error handling package for Dart/Flutter with Either pattern, typed Failures, and optional Dio support.
-version: 2.0.1
+name: failure_kit
+description: HTTP-client agnostic error handling for Dart/Flutter — Either pattern, typed Failures, pluggable mapper chain, and optional Dio support.
+version: 3.0.0
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

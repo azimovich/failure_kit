@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:dart_failure_handler/dart_failure_handler.dart';
+import 'package:failure_kit/failure_kit.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -404,16 +404,16 @@ void main() {
     });
   });
 
-  group('BaseErrorMapper', () {
+  group('BaseFailureMapper', () {
     test('handles TimeoutException as TimeoutFailure', () {
       final error = TimeoutException('Timed out');
-      final failure = BaseErrorMapper.handle(error, StackTrace.current);
+      final failure = BaseFailureMapper.handle(error, StackTrace.current);
       expect(failure, isA<TimeoutFailure>());
     });
 
     test('handles FormatException as ParsingFailure', () {
       final error = const FormatException('Invalid format');
-      final failure = BaseErrorMapper.handle(error, StackTrace.current);
+      final failure = BaseFailureMapper.handle(error, StackTrace.current);
       expect(failure, isA<ParsingFailure>());
     });
 
@@ -427,13 +427,13 @@ void main() {
       } on TypeError catch (e) {
         error = e;
       }
-      final failure = BaseErrorMapper.handle(error, StackTrace.current);
+      final failure = BaseFailureMapper.handle(error, StackTrace.current);
       expect(failure, isA<ParsingFailure>());
     });
 
     test('handles unknown error as UnknownFailure', () {
       final error = Exception('Something went wrong');
-      final failure = BaseErrorMapper.handle(error, StackTrace.current);
+      final failure = BaseFailureMapper.handle(error, StackTrace.current);
       expect(failure, isA<UnknownFailure>());
       expect(failure.message, contains('Something went wrong'));
     });
@@ -441,14 +441,14 @@ void main() {
     test('preserves stack trace', () {
       final error = Exception('test');
       final st = StackTrace.current;
-      final failure = BaseErrorMapper.handle(error, st);
+      final failure = BaseFailureMapper.handle(error, st);
       expect(failure.stackTrace, equals(st));
     });
   });
 
-  group('ErrorMapperChain', () {
-    test('base chain falls through to BaseErrorMapper', () {
-      final failure = ErrorMapperChain.base.handle(
+  group('FailureMapperChain', () {
+    test('base chain falls through to BaseFailureMapper', () {
+      final failure = FailureMapperChain.base.handle(
         const FormatException('bad'),
         StackTrace.current,
       );
@@ -456,7 +456,7 @@ void main() {
     });
 
     test('prepend mapper runs first', () {
-      final chain = ErrorMapperChain.base.prepend(
+      final chain = FailureMapperChain.base.prepend(
         (e, st) => e is FormatException
             ? const ServerFailure(message: 'intercepted')
             : null,
@@ -470,20 +470,19 @@ void main() {
     });
 
     test('null from mapper passes to next', () {
-      final chain = ErrorMapperChain.base
-          .prepend((e, st) => null) // always skip
-          .prepend((e, st) => null); // always skip
+      final chain = FailureMapperChain.base
+          .prepend((e, st) => null)
+          .prepend((e, st) => null);
       final failure = chain.handle(
         const FormatException('bad'),
         StackTrace.current,
       );
-      // Falls through to BaseErrorMapper
       expect(failure, isA<ParsingFailure>());
     });
 
     test('prepend order: first prepended runs last', () {
       final calls = <String>[];
-      final chain = ErrorMapperChain.base
+      final chain = FailureMapperChain.base
           .prepend((e, st) {
             calls.add('second');
             return null;
@@ -498,7 +497,7 @@ void main() {
 
     test('append adds mapper after existing ones', () {
       final calls = <String>[];
-      final chain = ErrorMapperChain.base
+      final chain = FailureMapperChain.base
           .prepend((e, st) {
             calls.add('first');
             return null;
@@ -512,7 +511,7 @@ void main() {
     });
 
     test('custom Failure from user mapper is returned', () {
-      final chain = ErrorMapperChain.base.prepend(
+      final chain = FailureMapperChain.base.prepend(
         (e, st) => e is Exception ? _CustomFailure() : null,
       );
       final failure = chain.handle(Exception('x'), StackTrace.current);
@@ -520,36 +519,36 @@ void main() {
     });
   });
 
-  group('RepositoryHandler', () {
+  group('FailureGuard', () {
     test('call returns Right on success', () async {
-      final repository = _BaseRepository();
-      final result = await repository.successCall();
+      final guard = _BaseGuard();
+      final result = await guard.successCall();
       expect(result.isRight, isTrue);
       expect(result.right, equals(42));
     });
 
     test('call returns Left on exception', () async {
-      final repository = _BaseRepository();
-      final result = await repository.failingCall();
+      final guard = _BaseGuard();
+      final result = await guard.failingCall();
       expect(result.isLeft, isTrue);
       expect(result.left, isA<UnknownFailure>());
     });
 
     test('call captures stack trace', () async {
-      final repository = _BaseRepository();
-      final result = await repository.failingCall();
+      final guard = _BaseGuard();
+      final result = await guard.failingCall();
       expect(result.left.stackTrace, isNotNull);
     });
 
-    test('uses BaseErrorMapper by default', () async {
-      final repository = _BaseRepository();
-      final result = await repository.timeoutCall();
+    test('uses BaseFailureMapper by default', () async {
+      final guard = _BaseGuard();
+      final result = await guard.timeoutCall();
       expect(result.left, isA<TimeoutFailure>());
     });
 
-    test('custom errorMapperChain intercepts errors', () async {
-      final repository = _CustomMapperRepository();
-      final result = await repository.failingCall();
+    test('custom failureChain intercepts errors', () async {
+      final guard = _CustomChainGuard();
+      final result = await guard.failingCall();
       expect(result.left, isA<ServerFailure>());
       expect(result.left.message, equals('Custom mapped'));
     });
@@ -562,7 +561,7 @@ class _CustomFailure extends Failure {
   _CustomFailure() : super(message: 'custom error');
 }
 
-class _BaseRepository with RepositoryHandler {
+class _BaseGuard with FailureGuard {
   Future<Either<Failure, int>> successCall() {
     return call(() async => 42);
   }
@@ -576,9 +575,9 @@ class _BaseRepository with RepositoryHandler {
   }
 }
 
-class _CustomMapperRepository with RepositoryHandler {
+class _CustomChainGuard with FailureGuard {
   @override
-  ErrorMapperChain get errorMapperChain => ErrorMapperChain.base.prepend(
+  FailureMapperChain get failureChain => FailureMapperChain.base.prepend(
         (error, st) => const ServerFailure(message: 'Custom mapped'),
       );
 

@@ -1,17 +1,17 @@
 import 'dart:io';
 import 'failure.dart';
-import 'error_mapper.dart';
+import 'failure_mapper.dart';
 import 'package:dio/dio.dart';
 
-/// Dio-specific [ErrorMapper] — maps [DioException] and [SocketException]
+/// Dio-specific [FailureMapper] — maps [DioException] and [SocketException]
 /// to typed [Failure] objects.
 ///
 /// Returns `null` for any error that is not Dio-related, allowing the next
-/// mapper in the chain (or [BaseErrorMapper]) to handle it.
+/// mapper in the chain (or [BaseFailureMapper]) to handle it.
 ///
 /// Import via:
 /// ```dart
-/// import 'package:dart_failure_handler/dio.dart';
+/// import 'package:failure_kit/dio.dart';
 /// ```
 ///
 /// Handles:
@@ -22,17 +22,17 @@ import 'package:dio/dio.dart';
 ///
 /// Example — manual use:
 /// ```dart
-/// final failure = DioErrorMapper.handle(e, st) ?? BaseErrorMapper.handle(e, st);
+/// final failure = DioFailureMapper.handle(e, st) ?? BaseFailureMapper.handle(e, st);
 /// ```
 ///
 /// Example — via chain:
 /// ```dart
-/// ErrorMapperChain.base.prepend(DioErrorMapper.handle)
+/// FailureMapperChain.base.prepend(DioFailureMapper.handle)
 /// ```
-class DioErrorMapper {
-  const DioErrorMapper._();
+class DioFailureMapper {
+  const DioFailureMapper._();
 
-  /// Conforms to [ErrorMapper]. Returns `null` for non-Dio errors.
+  /// Conforms to [FailureMapper]. Returns `null` for non-Dio errors.
   static Failure? handle(Object error, StackTrace stackTrace) {
     if (error is DioException) {
       return _handleDioError(error, stackTrace);

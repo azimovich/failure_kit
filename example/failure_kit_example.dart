@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print
 
-import 'package:dart_failure_handler/dart_failure_handler.dart';
+import 'package:failure_kit/failure_kit.dart';
 
 // =============================================================================
 // This example shows usage WITHOUT Dio (any HTTP client works)
@@ -9,17 +9,14 @@ import 'package:dart_failure_handler/dart_failure_handler.dart';
 // =============================================================================
 
 // --- Example: Simple data service ---
-class DataService with RepositoryHandler {
-  /// Simulates fetching data that could fail
+class DataService with FailureGuard {
   Future<Either<Failure, String>> fetchData() {
     return call(() async {
-      // Replace with your HTTP client call (http, chopper, etc.)
       await Future<void>.delayed(const Duration(milliseconds: 100));
       return 'Hello from API!';
     });
   }
 
-  /// Simulates a failing call
   Future<Either<Failure, String>> fetchBadData() {
     return call(() async {
       throw FormatException('Invalid JSON received');
@@ -27,11 +24,11 @@ class DataService with RepositoryHandler {
   }
 }
 
-// --- Example: Custom error mapper chain ---
-class CustomService with RepositoryHandler {
+// --- Example: Custom mapper chain ---
+class CustomService with FailureGuard {
   @override
-  ErrorMapperChain get errorMapperChain =>
-      ErrorMapperChain.base.prepend(_customMapper);
+  FailureMapperChain get failureChain =>
+      FailureMapperChain.base.prepend(_customMapper);
 
   static Failure? _customMapper(Object error, StackTrace st) {
     if (error is FormatException) {
@@ -41,7 +38,7 @@ class CustomService with RepositoryHandler {
         stackTrace: st,
       );
     }
-    return null; // pass to BaseErrorMapper
+    return null; // pass to BaseFailureMapper
   }
 
   Future<Either<Failure, int>> calculate() {
@@ -144,9 +141,9 @@ void main() async {
   print('leftOrNull on failure: ${failureEither.leftOrNull?.message}');
 
   // -----------------------------------------------------------------------
-  // Example 8: Custom ErrorMapper chain
+  // Example 8: Custom FailureMapper chain
   // -----------------------------------------------------------------------
-  print('\n=== Example 8: Custom ErrorMapperChain ===');
+  print('\n=== Example 8: Custom FailureMapperChain ===');
   final customService = CustomService();
   final customResult = await customService.calculate();
   print('Custom failure: ${customResult.left.message}');
@@ -155,7 +152,7 @@ void main() async {
   // Example 9: User-defined Failure subclass + when(custom:)
   // -----------------------------------------------------------------------
   print('\n=== Example 9: User-defined Failure with when(custom:) ===');
-  final dbChain = ErrorMapperChain.base.prepend((e, st) {
+  final dbChain = FailureMapperChain.base.prepend((e, st) {
     if (e is FormatException) {
       return DatabaseFailure(
         message: 'DB parse error: ${e.message}',

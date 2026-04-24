@@ -1,3 +1,62 @@
+## 3.0.0
+
+### Breaking Changes
+
+- Package renamed from `dart_failure_handler` to `failure_kit`.
+- Entry point changed: `package:dart_failure_handler/dart_failure_handler.dart` → `package:failure_kit/failure_kit.dart`.
+- `ErrorMapper` typedef renamed to `FailureMapper`.
+- `ErrorMapperChain` renamed to `FailureMapperChain`.
+- `BaseErrorMapper` renamed to `BaseFailureMapper`.
+- `DioErrorMapper` renamed to `DioFailureMapper`.
+- `RepositoryHandler` mixin renamed to `FailureGuard`.
+- `DioRepositoryHandler` mixin renamed to `DioFailureGuard`.
+- `FailureGuard.errorMapperChain` getter renamed to `failureChain`.
+
+### Migration Guide
+
+```yaml
+# pubspec.yaml
+# Before
+dart_failure_handler:
+  git:
+    url: https://github.com/azimovich/my_dart_failure_handler.git
+    ref: version/2.0.1
+
+# After
+failure_kit:
+  git:
+    url: https://github.com/azimovich/failure_kit.git
+    ref: version/3.0.0
+```
+
+```dart
+// Before
+import 'package:dart_failure_handler/dart_failure_handler.dart';
+import 'package:dart_failure_handler/dio.dart';
+
+// After
+import 'package:failure_kit/failure_kit.dart';
+import 'package:failure_kit/dio.dart';
+```
+
+```dart
+// Before
+class UserRepo with RepositoryHandler, DioRepositoryHandler {
+  @override
+  ErrorMapperChain get errorMapperChain =>
+      ErrorMapperChain.base.prepend(DioErrorMapper.handle);
+}
+BaseErrorMapper.handle(e, st);
+
+// After
+class UserRepo with FailureGuard, DioFailureGuard {
+  @override
+  FailureMapperChain get failureChain =>
+      FailureMapperChain.base.prepend(DioFailureMapper.handle);
+}
+BaseFailureMapper.handle(e, st);
+```
+
 ## 2.0.1
 
 ### Added

@@ -1,24 +1,24 @@
 import 'dart:io';
 
-import 'package:dart_failure_handler/dio.dart';
+import 'package:failure_kit/dio.dart';
 import 'package:dio/dio.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('DioErrorMapper', () {
+  group('DioFailureMapper', () {
     test('handles SocketException as NoInternetFailure', () {
       final error = SocketException('Connection refused');
-      final failure = DioErrorMapper.handle(error, StackTrace.current);
+      final failure = DioFailureMapper.handle(error, StackTrace.current);
       expect(failure, isA<NoInternetFailure>());
     });
 
     test('returns null for non-Dio Exception', () {
-      final result = DioErrorMapper.handle(Exception('unknown'), StackTrace.current);
+      final result = DioFailureMapper.handle(Exception('unknown'), StackTrace.current);
       expect(result, isNull);
     });
 
     test('returns null for FormatException', () {
-      final result = DioErrorMapper.handle(const FormatException('bad'), StackTrace.current);
+      final result = DioFailureMapper.handle(const FormatException('bad'), StackTrace.current);
       expect(result, isNull);
     });
 
@@ -28,7 +28,7 @@ void main() {
           type: DioExceptionType.connectionError,
           requestOptions: RequestOptions(path: '/test'),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<NoInternetFailure>());
       });
 
@@ -37,7 +37,7 @@ void main() {
           type: DioExceptionType.connectionTimeout,
           requestOptions: RequestOptions(path: '/test'),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<TimeoutFailure>());
       });
 
@@ -46,7 +46,7 @@ void main() {
           type: DioExceptionType.sendTimeout,
           requestOptions: RequestOptions(path: '/test'),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<TimeoutFailure>());
       });
 
@@ -55,7 +55,7 @@ void main() {
           type: DioExceptionType.receiveTimeout,
           requestOptions: RequestOptions(path: '/test'),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<TimeoutFailure>());
       });
 
@@ -64,7 +64,7 @@ void main() {
           type: DioExceptionType.cancel,
           requestOptions: RequestOptions(path: '/test'),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<CancellationFailure>());
       });
 
@@ -78,7 +78,7 @@ void main() {
             data: {'message': 'User not found'},
           ),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<ServerFailure>());
         expect((failure as ServerFailure).statusCode, equals(404));
         expect(failure.message, equals('User not found'));
@@ -94,7 +94,7 @@ void main() {
             data: {'error': 'Internal error'},
           ),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<ServerFailure>());
         expect(failure!.message, equals('Internal error'));
       });
@@ -109,7 +109,7 @@ void main() {
             data: {'msg': 'Bad request'},
           ),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<ServerFailure>());
         expect(failure!.message, equals('Bad request'));
       });
@@ -125,7 +125,7 @@ void main() {
             data: 'Not a map',
           ),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<ServerFailure>());
         expect(failure!.message, equals('Server error (500)'));
       });
@@ -136,7 +136,7 @@ void main() {
           requestOptions: RequestOptions(path: '/test'),
           error: const SocketException('Network unreachable'),
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<NoInternetFailure>());
       });
 
@@ -146,13 +146,13 @@ void main() {
           requestOptions: RequestOptions(path: '/test'),
           message: 'SSL handshake failed',
         );
-        final failure = DioErrorMapper.handle(error, StackTrace.current);
+        final failure = DioFailureMapper.handle(error, StackTrace.current);
         expect(failure, isA<UnknownFailure>());
         expect(failure!.message, contains('Bad certificate'));
       });
 
-      test('non-Dio error in chain falls through to BaseErrorMapper', () {
-        final chain = ErrorMapperChain.base.prepend(DioErrorMapper.handle);
+      test('non-Dio error in chain falls through to BaseFailureMapper', () {
+        final chain = FailureMapperChain.base.prepend(DioFailureMapper.handle);
         final failure = chain.handle(
           const FormatException('bad json'),
           StackTrace.current,
@@ -162,42 +162,42 @@ void main() {
     });
   });
 
-  group('DioRepositoryHandler', () {
-    test('uses DioErrorMapper for error mapping', () async {
-      final repository = _DioTestRepository();
-      final result = await repository.connectionErrorCall();
+  group('DioFailureGuard', () {
+    test('uses DioFailureMapper for error mapping', () async {
+      final guard = _DioTestGuard();
+      final result = await guard.connectionErrorCall();
       expect(result.left, isA<NoInternetFailure>());
     });
 
     test('call returns Right on success', () async {
-      final repository = _DioTestRepository();
-      final result = await repository.successCall();
+      final guard = _DioTestGuard();
+      final result = await guard.successCall();
       expect(result.isRight, isTrue);
       expect(result.right, equals('success'));
     });
 
     test('handles DioException timeout', () async {
-      final repository = _DioTestRepository();
-      final result = await repository.timeoutCall();
+      final guard = _DioTestGuard();
+      final result = await guard.timeoutCall();
       expect(result.left, isA<TimeoutFailure>());
     });
 
     test('handles DioException cancel', () async {
-      final repository = _DioTestRepository();
-      final result = await repository.cancelCall();
+      final guard = _DioTestGuard();
+      final result = await guard.cancelCall();
       expect(result.left, isA<CancellationFailure>());
     });
 
-    test('non-Dio error falls through to BaseErrorMapper', () async {
-      final repository = _DioTestRepository();
-      final result = await repository.formatExceptionCall();
+    test('non-Dio error falls through to BaseFailureMapper', () async {
+      final guard = _DioTestGuard();
+      final result = await guard.formatExceptionCall();
       expect(result.left, isA<ParsingFailure>());
     });
   });
 }
 
-// Test helper: Dio repository
-class _DioTestRepository with RepositoryHandler, DioRepositoryHandler {
+// Test helper
+class _DioTestGuard with FailureGuard, DioFailureGuard {
   Future<Either<Failure, String>> successCall() {
     return call(() async => 'success');
   }
