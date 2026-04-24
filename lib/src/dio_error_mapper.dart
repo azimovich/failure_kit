@@ -91,6 +91,7 @@ class DioErrorMapper {
     return ServerFailure(
       message: message,
       statusCode: statusCode,
+      data: response?.data,
       cause: error,
       stackTrace: st,
     );

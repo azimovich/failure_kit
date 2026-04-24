@@ -99,9 +99,14 @@ class ServerFailure extends Failure {
   /// HTTP status code (e.g., 400, 401, 500)
   final int? statusCode;
 
+  /// Raw response body from the server (e.g., parsed JSON as Map or List).
+  /// Use this to extract domain-specific fields like `error.key`, `entity.name`, etc.
+  final Object? data;
+
   const ServerFailure({
     super.message = 'Server error',
     this.statusCode,
+    this.data,
     super.cause,
     super.stackTrace,
   });

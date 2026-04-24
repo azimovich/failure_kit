@@ -1,3 +1,15 @@
+## 2.0.1
+
+### Added
+
+- `ServerFailure.data` — raw response body (`Object?`). Set by `DioErrorMapper` from `response.data`.
+  Access domain-specific fields without casting through `cause`:
+
+  ```dart
+  final data = serverFailure.data as Map?;
+  final errorKey = data?['error.key'] as String?;
+  ```
+
 ## 2.0.0
 
 ### Breaking Changes
