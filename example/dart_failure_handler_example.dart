@@ -119,9 +119,21 @@ void main() async {
   ));
 
   // -----------------------------------------------------------------------
-  // Example 7: Custom error mapper
+  // Example 7: rightOrNull / leftOrNull
   // -----------------------------------------------------------------------
-  print('\n=== Example 7: Custom ErrorMapper ===');
+  print('\n=== Example 7: rightOrNull / leftOrNull ===');
+  final successEither = await dataService.fetchData();
+  final failureEither = await dataService.fetchBadData();
+
+  print('rightOrNull on success: ${successEither.rightOrNull}');
+  print('rightOrNull on failure: ${failureEither.rightOrNull}');
+  print('leftOrNull on success: ${successEither.leftOrNull}');
+  print('leftOrNull on failure: ${failureEither.leftOrNull?.message}');
+
+  // -----------------------------------------------------------------------
+  // Example 8: Custom error mapper
+  // -----------------------------------------------------------------------
+  print('\n=== Example 8: Custom ErrorMapper ===');
   final customService = CustomService();
   final customResult = await customService.calculate();
   print('Custom failure: ${customResult.left.message}');

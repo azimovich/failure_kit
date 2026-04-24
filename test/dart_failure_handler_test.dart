@@ -17,9 +17,9 @@ void main() {
         expect(either.right, equals(42));
       });
 
-      test('left getter throws', () {
+      test('left getter throws StateError', () {
         const either = Right<String, int>(42);
-        expect(() => either.left, throwsException);
+        expect(() => either.left, throwsStateError);
       });
 
       test('fold returns right function result', () {
@@ -71,9 +71,9 @@ void main() {
         expect(either.left, equals('error'));
       });
 
-      test('right getter throws', () {
+      test('right getter throws StateError', () {
         const either = Left<String, int>('error');
-        expect(() => either.right, throwsException);
+        expect(() => either.right, throwsStateError);
       });
 
       test('fold returns left function result', () {
@@ -170,10 +170,44 @@ void main() {
         expect(left1, equals(left2));
       });
 
-      test('Left and Right are not equal', () {
+      test('Left and Right are not equal even with same value', () {
         const left = Left<int, int>(42);
         const right = Right<int, int>(42);
         expect(left, isNot(equals(right)));
+      });
+
+      test('Left and Right have different hashCodes for same value', () {
+        const left = Left<int, int>(42);
+        const right = Right<int, int>(42);
+        expect(left.hashCode, isNot(equals(right.hashCode)));
+      });
+
+      test('two Rights with different values are not equal', () {
+        const right1 = Right<String, int>(42);
+        const right2 = Right<String, int>(99);
+        expect(right1, isNot(equals(right2)));
+      });
+    });
+
+    group('Nullable accessors', () {
+      test('rightOrNull returns value on Right', () {
+        const either = Right<String, int>(42);
+        expect(either.rightOrNull, equals(42));
+      });
+
+      test('rightOrNull returns null on Left', () {
+        const either = Left<String, int>('error');
+        expect(either.rightOrNull, isNull);
+      });
+
+      test('leftOrNull returns value on Left', () {
+        const either = Left<String, int>('error');
+        expect(either.leftOrNull, equals('error'));
+      });
+
+      test('leftOrNull returns null on Right', () {
+        const either = Right<String, int>(42);
+        expect(either.leftOrNull, isNull);
       });
     });
 
@@ -305,6 +339,38 @@ void main() {
       test('Failure includes message', () {
         const failure = NoInternetFailure();
         expect(failure.toString(), contains('NoInternetFailure'));
+      });
+    });
+
+    group('Equality', () {
+      test('same ServerFailure instances are equal', () {
+        const f1 = ServerFailure(message: 'Not found', statusCode: 404);
+        const f2 = ServerFailure(message: 'Not found', statusCode: 404);
+        expect(f1, equals(f2));
+      });
+
+      test('ServerFailures with different statusCode are not equal', () {
+        const f1 = ServerFailure(message: 'Error', statusCode: 404);
+        const f2 = ServerFailure(message: 'Error', statusCode: 500);
+        expect(f1, isNot(equals(f2)));
+      });
+
+      test('same NoInternetFailure instances are equal', () {
+        const f1 = NoInternetFailure();
+        const f2 = NoInternetFailure();
+        expect(f1, equals(f2));
+      });
+
+      test('different Failure types are not equal even with same message', () {
+        const f1 = TimeoutFailure(message: 'error');
+        const f2 = ParsingFailure(message: 'error');
+        expect(f1, isNot(equals(f2)));
+      });
+
+      test('equal Failures have same hashCode', () {
+        const f1 = ServerFailure(message: 'err', statusCode: 500);
+        const f2 = ServerFailure(message: 'err', statusCode: 500);
+        expect(f1.hashCode, equals(f2.hashCode));
       });
     });
   });

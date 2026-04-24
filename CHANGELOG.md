@@ -1,3 +1,23 @@
+## 1.1.0
+
+### Fixed
+
+- `Either` equality now correctly distinguishes `Left` and `Right` with the same value (`Left(42) != Right(42)`)
+- `Either.==` uses typed generic check — cross-type comparison no longer gives false positives
+- `DioErrorHandler` now correctly maps `DioException(error: SocketException)` to `NoInternetFailure`
+- `DioExceptionType.badCertificate` no longer falls through to `ServerFailure`
+
+### Changed
+
+- `Either.left`/`Either.right` now throw `StateError` instead of `Exception` on illegal access
+
+### Added
+
+- `Either.rightOrNull` — returns right value or null if Left
+- `Either.leftOrNull` — returns left value or null if Right
+- `Failure` base class now implements `==` and `hashCode`
+- `ServerFailure` overrides `==` and `hashCode` including `statusCode`
+
 ## 1.0.2
 
 - Made package HTTP-client agnostic - core works without Dio

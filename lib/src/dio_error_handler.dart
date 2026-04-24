@@ -46,6 +46,10 @@ class DioErrorHandler {
   }
 
   static Failure _handleDioError(DioException error, StackTrace? st) {
+    if (error.error is SocketException) {
+      return NoInternetFailure(cause: error, stackTrace: st);
+    }
+
     return switch (error.type) {
       DioExceptionType.connectionError => NoInternetFailure(
           cause: error,
@@ -63,13 +67,19 @@ class DioErrorHandler {
           cause: error,
           stackTrace: st,
         ),
+      DioExceptionType.badCertificate => UnknownFailure(
+          message: 'Bad certificate: ${error.message ?? 'SSL error'}',
+          cause: error,
+          stackTrace: st,
+        ),
       _ => _handleServerError(error, st),
     };
   }
 
   static Failure _handleServerError(DioException error, StackTrace? st) {
     final response = error.response;
-    String message = error.message ?? 'Unexpected server error';
+    final statusCode = response?.statusCode;
+    String message = statusCode != null ? 'Server error ($statusCode)' : 'Unexpected server error';
 
     if (response?.data is Map) {
       final data = response!.data as Map;
@@ -78,7 +88,7 @@ class DioErrorHandler {
 
     return ServerFailure(
       message: message,
-      statusCode: response?.statusCode,
+      statusCode: statusCode,
       cause: error,
       stackTrace: st,
     );

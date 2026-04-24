@@ -114,7 +114,7 @@ void main() {
         expect(failure.message, equals('Bad request'));
       });
 
-      test('badResponse with non-Map data uses error message', () {
+      test('badResponse with non-Map data uses status code message', () {
         final error = DioException(
           type: DioExceptionType.badResponse,
           requestOptions: RequestOptions(path: '/test'),
@@ -127,7 +127,28 @@ void main() {
         );
         final failure = DioErrorHandler.handle(error);
         expect(failure, isA<ServerFailure>());
-        expect(failure.message, equals('Server error occurred'));
+        expect(failure.message, equals('Server error (500)'));
+      });
+
+      test('DioException with SocketException inner error becomes NoInternetFailure', () {
+        final error = DioException(
+          type: DioExceptionType.unknown,
+          requestOptions: RequestOptions(path: '/test'),
+          error: const SocketException('Network unreachable'),
+        );
+        final failure = DioErrorHandler.handle(error);
+        expect(failure, isA<NoInternetFailure>());
+      });
+
+      test('badCertificate becomes UnknownFailure', () {
+        final error = DioException(
+          type: DioExceptionType.badCertificate,
+          requestOptions: RequestOptions(path: '/test'),
+          message: 'SSL handshake failed',
+        );
+        final failure = DioErrorHandler.handle(error);
+        expect(failure, isA<UnknownFailure>());
+        expect(failure.message, contains('Bad certificate'));
       });
     });
   });

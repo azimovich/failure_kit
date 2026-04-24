@@ -23,7 +23,8 @@ Add this to your `pubspec.yaml`:
 dependencies:
   dart_failure_handler:
     git:
-      url: https://github.com/your-username/dart_failure_handler.git
+      url: https://github.com/azimovich/dart_failure_handler.git
+      ref: version/1.1.0
 ```
 
 ## Quick Start
