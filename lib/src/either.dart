@@ -21,16 +21,31 @@ sealed class Either<L, R> {
   bool get isRight => this is Right<L, R>;
 
   /// Get [Left] value, may throw an exception when the value is [Right]
-  L get left => this.fold<L>(
-    (L value) => value,
-    (R right) => throw Exception("Illegal use. You should check isLeft before calling"),
-  );
+  L get left => fold<L>(
+        (L value) => value,
+        (R right) => throw StateError('Called .left on a Right. Check isLeft before accessing.'),
+      );
+
+  /// Get [Right] value or return [defaultValue] if [Left]
+  R getOrElse(R defaultValue) => fold((_) => defaultValue, (r) => r);
+
+  /// Get [Right] value or compute from [defaultValue] function if [Left]
+  R getOrElseCompute(R Function(L left) defaultValue) => fold(defaultValue, (r) => r);
+
+  /// Get [Left] value or return [defaultValue] if [Right]
+  L getLeftOrElse(L defaultValue) => fold((l) => l, (_) => defaultValue);
 
   /// Get [Right] value, may throw an exception when the value is [Left]
-  R get right => this.fold<R>(
-    (L left) => throw Exception("Illegal use. You should check isRight before calling"),
-    (R value) => value,
-  );
+  R get right => fold<R>(
+        (L left) => throw StateError('Called .right on a Left. Check isRight before accessing.'),
+        (R value) => value,
+      );
+
+  /// Get [Right] value or null if [Left]
+  R? get rightOrNull => fold((_) => null, (r) => r);
+
+  /// Get [Left] value or null if [Right]
+  L? get leftOrNull => fold((l) => l, (_) => null);
 
   /// Transform values of [Left] and [Right]
   Either<TL, TR> either<TL, TR>(TL Function(L left) fnL, TR Function(R right) fnR);
@@ -91,12 +106,6 @@ sealed class Either<L, R> {
   static Either<L, R> condLazy<L, R>({required bool test, required Lazy<L> leftValue, required Lazy<R> rightValue}) =>
       test ? Right(rightValue()) : Left(leftValue());
 
-  @override
-  bool operator ==(Object other) =>
-      this.fold((left) => other is Left && left == other.value, (right) => other is Right && right == other.value);
-
-  @override
-  int get hashCode => fold((left) => left.hashCode, (right) => right.hashCode);
 }
 
 /// Used for "failure"
@@ -137,6 +146,13 @@ class Left<L, R> extends Either<L, R> {
 
   @override
   T fold<T>(T Function(L left) fnL, T Function(R right) fnR) => fnL(value);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is Left<L, R> && other.value == value);
+
+  @override
+  int get hashCode => Object.hash('Left', value);
 }
 
 /// Used for "success"
@@ -176,4 +192,11 @@ class Right<L, R> extends Either<L, R> {
 
   @override
   T fold<T>(T Function(L left) fnL, T Function(R right) fnR) => fnR(value);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is Right<L, R> && other.value == value);
+
+  @override
+  int get hashCode => Object.hash('Right', value);
 }
