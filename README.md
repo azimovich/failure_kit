@@ -5,6 +5,25 @@ HTTP-client agnostic error handling for Dart/Flutter — `Either` pattern, typed
 [![Dart](https://img.shields.io/badge/Dart-3.0+-blue.svg)](https://dart.dev)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+## Why failure_kit
+
+Plain `try/catch` is fine until your codebase grows, and at that point three problems show up:
+
+1. **Errors are invisible in signatures.** `Future<User> getUser()` doesn't tell the caller anything can go wrong. The compiler won't remind you to handle failures.
+2. **Exception types leak across layers.** `DioException`, `SocketException`, `FormatException`, `TimeoutException` — your UI ends up importing HTTP-client types just to render an error message.
+3. **Every layer re-implements the same `try/catch`.** The same six lines that map exceptions to UI-friendly errors get copy-pasted into every repository.
+
+Rolling your own `Either` solves the first two but not the third — and most hand-rolled versions miss async chaining, equality, exhaustive pattern matching, or proper stack-trace capture.
+
+`failure_kit` gives you:
+
+- **Errors in the type signature.** `Future<Either<Failure, User>>` — the caller can't ignore the failure case.
+- **A typed `Failure` hierarchy.** `ServerFailure`, `NoInternetFailure`, `TimeoutFailure`, `CancellationFailure`, `ParsingFailure`, `UnknownFailure` — UI matches on these, not on raw exceptions.
+- **One-line repository wrapping.** `FailureGuard.call(...)` does the `try/catch`, runs the mapper chain, and returns `Either`. You write the action, not the boilerplate.
+- **Extensible mapping without forking the package.** A `FailureMapper` returns `Failure?` — return `null` to delegate. Compose Dio, Drift, GraphQL, auth, anything — order is yours.
+- **Custom `Failure`s as first-class citizens.** Subclass `Failure` in your own project and they route through `when(custom:)` automatically.
+- **A real `Either<L, R>`.** `map`, `mapAsync`, `then`, `thenAsync`, `fold`, `getOrElse`, `swap`, `tryCatch`, equality, `==`/`hashCode`, `Right(42) != Left(42)` — no surprises.
+
 ## Features
 
 - 🎯 Type-safe error handling with extensible `Failure` classes
@@ -42,6 +61,64 @@ class UserRepository with FailureGuard {
 
 `call(...)` runs the action, catches any exception, and returns a `Left(Failure)` or `Right(value)`.
 
+## Before / After
+
+**Before — plain try/catch leaking exception types:**
+
+```dart
+Future<User> getUser(int id) async {
+  try {
+    final r = await _dio.get('/users/$id');
+    return User.fromJson(r.data);
+  } on DioException catch (e) {
+    if (e.type == DioExceptionType.connectionError) throw NoInternetException();
+    if (e.response?.statusCode != null) throw ServerException(e.response!.statusCode!);
+    rethrow;
+  } on FormatException {
+    throw ParseException();
+  }
+}
+
+// caller
+try {
+  final user = await repo.getUser(1);
+  showUser(user);
+} on NoInternetException {
+  showError('No internet');
+} on ServerException catch (e) {
+  showError('Server ${e.code}');
+} on ParseException {
+  showError('Bad data');
+} catch (_) {
+  showError('Something went wrong');
+}
+```
+
+**After — one-line wrapping, exhaustive matching, no exception leak:**
+
+```dart
+class UserRepository with FailureGuard {
+  Future<Either<Failure, User>> getUser(int id) => call(() async {
+        final r = await _dio.get('/users/$id');
+        return User.fromJson(r.data);
+      });
+}
+
+// caller
+(await repo.getUser(1)).fold(
+  (f) => f.when(
+    server: (f) => showError('Server ${f.statusCode}'),
+    network: (_) => showError('No internet'),
+    timeout: (_) => showError('Timed out'),
+    cancellation: (_) => showError('Cancelled'),
+    parsing: (_) => showError('Bad data'),
+    unknown: (f) => showError(f.message),
+    custom: (f) => showError(f.message),
+  ),
+  showUser,
+);
+```
+
 ## Handling results
 
 ```dart
@@ -76,6 +153,25 @@ final msg = failure.maybeWhen(
 
 // getOrElse
 final name = result.map((u) => u.name).getOrElse('Anonymous');
+```
+
+## Failure types
+
+| Failure               | Description                 | Common triggers                 |
+| --------------------- | --------------------------- | ------------------------------- |
+| `ServerFailure`       | Server/API errors           | HTTP 4xx/5xx responses          |
+| `NoInternetFailure`   | Network connectivity issues | No connection, `SocketException`|
+| `TimeoutFailure`      | Request timeout             | `TimeoutException`              |
+| `CancellationFailure` | Cancelled requests          | User cancelled, cancel tokens   |
+| `ParsingFailure`      | Data parsing errors         | JSON parse, `TypeError`         |
+| `UnknownFailure`      | Unexpected errors           | Anything else                   |
+| _Your subclass_       | Domain-specific             | DB, auth, GraphQL, etc.         |
+
+`ServerFailure` carries a `data` field (`Object?`) with the raw response body for domain-specific extraction:
+
+```dart
+final data = serverFailure.data as Map?;
+final errorKey = data?['error.key'] as String?;
 ```
 
 ## Custom Failure types
@@ -156,25 +252,6 @@ class UserRepository with FailureGuard {
 
 The same pattern applies to any HTTP client — just write a mapper that handles its exception type.
 
-## Failure types
-
-| Failure               | Description                 | Common triggers                 |
-| --------------------- | --------------------------- | ------------------------------- |
-| `ServerFailure`       | Server/API errors           | HTTP 4xx/5xx responses          |
-| `NoInternetFailure`   | Network connectivity issues | No connection, `SocketException`|
-| `TimeoutFailure`      | Request timeout             | `TimeoutException`              |
-| `CancellationFailure` | Cancelled requests          | User cancelled, cancel tokens   |
-| `ParsingFailure`      | Data parsing errors         | JSON parse, `TypeError`         |
-| `UnknownFailure`      | Unexpected errors           | Anything else                   |
-| _Your subclass_       | Domain-specific             | DB, auth, GraphQL, etc.         |
-
-`ServerFailure` carries a `data` field (`Object?`) with the raw response body for domain-specific extraction:
-
-```dart
-final data = serverFailure.data as Map?;
-final errorKey = data?['error.key'] as String?;
-```
-
 ## `Either` API reference
 
 ### Properties
@@ -215,3 +292,7 @@ final errorKey = data?['error.key'] as String?;
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+Developed with [Claude Code](https://claude.com/claude-code).
