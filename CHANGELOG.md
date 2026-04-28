@@ -1,163 +1,18 @@
-## 3.0.0
-
-### Breaking Changes
-
-- Package renamed from `dart_failure_handler` to `failure_kit`.
-- Entry point changed: `package:dart_failure_handler/dart_failure_handler.dart` → `package:failure_kit/failure_kit.dart`.
-- `ErrorMapper` typedef renamed to `FailureMapper`.
-- `ErrorMapperChain` renamed to `FailureMapperChain`.
-- `BaseErrorMapper` renamed to `BaseFailureMapper`.
-- `DioErrorMapper` renamed to `DioFailureMapper`.
-- `RepositoryHandler` mixin renamed to `FailureGuard`.
-- `DioRepositoryHandler` mixin renamed to `DioFailureGuard`.
-- `FailureGuard.errorMapperChain` getter renamed to `failureChain`.
-
-### Migration Guide
-
-```yaml
-# pubspec.yaml
-# Before
-dart_failure_handler:
-  git:
-    url: https://github.com/azimovich/my_dart_failure_handler.git
-    ref: version/2.0.1
-
-# After
-failure_kit:
-  git:
-    url: https://github.com/azimovich/failure_kit.git
-    ref: version/3.0.0
-```
-
-```dart
-// Before
-import 'package:dart_failure_handler/dart_failure_handler.dart';
-import 'package:dart_failure_handler/dio.dart';
-
-// After
-import 'package:failure_kit/failure_kit.dart';
-import 'package:failure_kit/dio.dart';
-```
-
-```dart
-// Before
-class UserRepo with RepositoryHandler, DioRepositoryHandler {
-  @override
-  ErrorMapperChain get errorMapperChain =>
-      ErrorMapperChain.base.prepend(DioErrorMapper.handle);
-}
-BaseErrorMapper.handle(e, st);
-
-// After
-class UserRepo with FailureGuard, DioFailureGuard {
-  @override
-  FailureMapperChain get failureChain =>
-      FailureMapperChain.base.prepend(DioFailureMapper.handle);
-}
-BaseFailureMapper.handle(e, st);
-```
-
-## 2.0.1
-
-### Added
-
-- `ServerFailure.data` — raw response body (`Object?`). Set by `DioErrorMapper` from `response.data`.
-  Access domain-specific fields without casting through `cause`:
-
-  ```dart
-  final data = serverFailure.data as Map?;
-  final errorKey = data?['error.key'] as String?;
-  ```
-
-## 2.0.0
-
-### Breaking Changes
-
-- `Failure` is no longer `sealed` — it is now `abstract`. User-defined subclasses are now supported outside the package.
-- `when()` requires a new `custom:` parameter — handles any user-defined `Failure` subclass. Update all existing `when()` calls.
-- `ErrorMapper` typedef now returns `Failure?` (was `Failure`). Return `null` to pass the error to the next mapper in the chain.
-- `RepositoryHandler.errorMapper` getter removed — replaced by `errorMapperChain` (`ErrorMapperChain`).
-- `ErrorHandler` class renamed to `BaseErrorMapper`. Update all direct usages.
-- `DioErrorHandler` class renamed to `DioErrorMapper`. Update all direct usages.
-- File `lib/src/error_handler.dart` replaced by `lib/src/error_mapper.dart`.
-- File `lib/src/dio_error_handler.dart` replaced by `lib/src/dio_error_mapper.dart`.
-
-### Migration Guide
-
-```dart
-// Before
-ErrorMapper get errorMapper => DioErrorHandler.handle;
-
-// After
-ErrorMapperChain get errorMapperChain =>
-    ErrorMapperChain.base.prepend(DioErrorMapper.handle);
-
-// Before
-ErrorHandler.handle(error, st)
-
-// After
-BaseErrorMapper.handle(error, st)
-
-// Before
-failure.when(server: ..., network: ..., unknown: ...)
-
-// After — add custom: case
-failure.when(server: ..., network: ..., unknown: ..., custom: (f) => ...)
-```
-
-### Added
-
-- `ErrorMapperChain` — interceptor-style chain of `ErrorMapper`s. First non-null result wins; falls back to `BaseErrorMapper`.
-- `ErrorMapperChain.prepend(mapper)` — add mapper at the front of the chain.
-- `ErrorMapperChain.append(mapper)` — add mapper at the end of the chain.
-- `ErrorMapperChain.base` — empty chain using only `BaseErrorMapper`.
-- `ErrorMapperChain.of(mapper)` — single-mapper chain.
-- `Failure.when(custom:)` — handles any user-defined `Failure` subclass via wildcard case.
-- `DioErrorMapper` — Dio-specific mapper conforming to nullable `ErrorMapper` signature.
-- `BaseErrorMapper` — renamed from `ErrorHandler`; handles standard Dart exceptions as final fallback.
-
-## 1.1.0
-
-### Fixed
-
-- `Either` equality now correctly distinguishes `Left` and `Right` with the same value (`Left(42) != Right(42)`)
-- `Either.==` uses typed generic check — cross-type comparison no longer gives false positives
-- `DioErrorHandler` now correctly maps `DioException(error: SocketException)` to `NoInternetFailure`
-- `DioExceptionType.badCertificate` no longer falls through to `ServerFailure`
-
-### Changed
-
-- `Either.left`/`Either.right` now throw `StateError` instead of `Exception` on illegal access
-
-### Added
-
-- `Either.rightOrNull` — returns right value or null if Left
-- `Either.leftOrNull` — returns left value or null if Right
-- `Failure` base class now implements `==` and `hashCode`
-- `ServerFailure` overrides `==` and `hashCode` including `statusCode`
-
-## 1.0.2
-
-- Made package HTTP-client agnostic - core works without Dio
-- Separated Dio-specific handling into `package:dart_failure_handler/dio.dart`
-- Core `ErrorHandler` now handles only standard Dart exceptions
-- Added `DioErrorHandler` for Dio-specific error mapping
-- Added `DioRepositoryHandler` convenience mixin
-- Made `RepositoryHandler` configurable via `errorMapper` getter
-- Added `ErrorMapper` typedef for custom error mapping functions
-- Updated documentation and examples
-
-## 1.0.1
-
-- Added `TimeoutFailure` and `CancellationFailure` failure types
-- Added `maybeWhen()` for optional pattern matching
-- Added `getOrElse()`, `getOrElseCompute()`, `getLeftOrElse()` to Either
-- Added `toString()` override for Failure classes
-- Added comprehensive unit tests
-- Added LICENSE file
-- Fixed `unnecessary_this` lint warnings
-- Updated documentation
+# Changelog
 
 ## 1.0.0
 
-- Initial version.
+Initial pub.dev release.
+
+### Features
+
+- `Either<L, R>` — sealed `Left` / `Right` with `map`, `mapAsync`, `then`, `thenAsync`, `fold`, `getOrElse`, `swap`, `tryCatch`, `tryExcept`, `cond`, `condLazy`.
+- `Failure` — abstract base class. User-defined subclasses are first-class citizens (route to `when(custom:)`).
+- Built-in failure types: `ServerFailure` (with `statusCode` and raw `data`), `NoInternetFailure`, `TimeoutFailure`, `CancellationFailure`, `ParsingFailure`, `UnknownFailure`.
+- `FailureMapper` typedef — `Failure? Function(Object, StackTrace)`. Return `null` to delegate to the next mapper in the chain.
+- `FailureMapperChain` — interceptor-style chain. First non-null result wins. Falls back to `BaseFailureMapper`.
+- `FailureGuard` mixin — wraps async actions in `Either<Failure, T>` via `call(...)`.
+
+### Notes
+
+- Package is HTTP-client agnostic and has no `dio` dependency. See `example/dio_integration.dart` for a copy-paste Dio mapper.
