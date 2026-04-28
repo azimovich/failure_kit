@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repository
+
+- GitHub: <https://github.com/azimovich/failure_kit>
+- Default branch: `main`. Release branches: `version/X.Y.Z`.
+
 ## Commands
 
 ```bash
@@ -11,17 +16,16 @@ dart test             # run all tests
 dart test -N "name"   # run single test by exact name
 dart test -n "pattern"# run tests matching pattern
 dart run example/failure_kit_example.dart
-dart run example/dio_example.dart
+dart run example/dio_integration.dart
 ```
 
 ## Architecture
 
-### Two entry points
+### Single entry point
 
-- `lib/failure_kit.dart` — HTTP-client agnostic core. No Dio dependency.
-- `lib/dio.dart` — re-exports core and adds `DioFailureMapper` + `DioFailureGuard`.
+- `lib/failure_kit.dart` — the only public entry. HTTP-client agnostic, no runtime Dio dependency.
 
-**Rule:** Never import `package:dio` from core `src/` files. Dio is only allowed in `lib/src/dio_failure_mapper.dart` and `lib/src/dio_failure_guard.dart`.
+**Rule:** Core (`lib/`) must not depend on any HTTP client. Dio integration lives only in `example/dio_integration.dart` as a copy-paste reference for users. `dio` is a `dev_dependency` (for the example) — never promote it to `dependencies`.
 
 ### Three core abstractions
 
@@ -38,8 +42,6 @@ dart run example/dio_example.dart
 
 **`FailureGuard`** (`lib/src/failure_guard.dart`) — mixin with `call<T>(action)`. Wraps action in try/catch, routes the error through `failureChain`, returns `Left(failure)` or `Right(value)`. Override `failureChain` to inject custom mappers.
 
-**`DioFailureGuard`** (`lib/src/dio_failure_guard.dart`) — convenience mixin on `FailureGuard`. Prepends `DioFailureMapper` to chain. Compose further with `super.failureChain.prepend(MyMapper.handle)`.
-
 ## Extension rules (OCP)
 
 - **Custom Failure:** Subclass `Failure` in user project. It will fall into `when(custom:)`. No package changes needed.
@@ -50,10 +52,17 @@ dart run example/dio_example.dart
 
 - Every `when()` call in tests must include a `custom:` case.
 - New `FailureMapperChain` behaviour tests go inside the existing `'FailureMapperChain'` group in `test/failure_kit_test.dart`.
-- Dio-specific tests belong in `test/dio_test.dart`.
+
+## Publishing
+
+Run `dart pub publish --dry-run` before every release — must show **0 warnings**.
+
+`.pubignore` excludes `CLAUDE.md` and `.claude/` from the published archive (they stay tracked in git for collaborators). Never re-add them to `.gitignore` — pub.dev warns when a checked-in file is also gitignored.
 
 ## Release
 
 1. Bump `version` in `pubspec.yaml`.
 2. Add entry to `CHANGELOG.md` (breaking changes + migration guide for majors).
 3. Work on branch `version/X.Y.Z`. Commits and PRs in English.
+4. Commit messages must NOT include a `Co-Authored-By: Claude` trailer.
+5. After merge to `main`: tag `vX.Y.Z`, push tags, then `dart pub publish`.
