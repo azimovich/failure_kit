@@ -29,8 +29,9 @@ Rolling your own `Either` solves the first two but not the third — and most ha
 - 🎯 Type-safe error handling with extensible `Failure` classes
 - 🔄 `Either` pattern (`Left` for failures, `Right` for success)
 - 🔌 Works with any HTTP client — Dio, `http`, Chopper, GraphQL, Drift, Hive, anything
-- 🎨 Pattern matching via `when()` and `maybeWhen()`
-- ⚡ Async support — `mapAsync`, `thenAsync`, and friends
+- 🎨 Pattern matching via `when()`, `maybeWhen()`, or native Dart 3 `switch`
+- ⚡ Async support — `mapAsync`, `thenAsync`, and chaining directly on `Future<Either>`
+- 🔁 Sync support — `callSync` for parsing, local computation, cache reads
 - 🧩 Interceptor-style mapper chain — plug in your own mappers without touching the package
 - 📦 Zero runtime dependencies beyond `meta`
 
@@ -38,7 +39,7 @@ Rolling your own `Either` solves the first two but not the third — and most ha
 
 ```yaml
 dependencies:
-  failure_kit: ^1.0.0
+  failure_kit: ^1.1.0
 ```
 
 ## Quick start
@@ -153,6 +154,52 @@ final msg = failure.maybeWhen(
 
 // getOrElse
 final name = result.map((u) => u.name).getOrElse('Anonymous');
+
+// Native Dart 3 pattern matching — Either is sealed, so switch is exhaustive
+switch (result) {
+  case Left(:final value):
+    showError(value.message);
+  case Right(:final value):
+    showUser(value);
+}
+
+// onLeft / onRight — side effects (logging) without breaking the chain
+final user = result
+    .onLeft((f) => log.warning(f.message))
+    .getOrElse(User.anonymous);
+```
+
+### Chaining on `Future<Either>`
+
+The `FutureEither` extension lets you compose without intermediate `await`s:
+
+```dart
+// Instead of:
+final name = (await repo.getUser(1)).map((u) => u.name).getOrElse('Anonymous');
+
+// Write:
+final name = await repo.getUser(1).mapRight((u) => u.name).getOrElse('Anonymous');
+
+// Chains compose freely:
+final posts = await repo
+    .getUser(1)
+    .thenRight((u) => repo.getPosts(u.id))
+    .mapRight((posts) => posts.take(10).toList())
+    .getOrElse(const []);
+```
+
+> `mapRight`/`thenRight` (not `map`/`then`) — `Future` already declares `then`,
+> which would shadow the extension member.
+
+### Synchronous actions
+
+`callSync` wraps non-async actions with the same mapper chain:
+
+```dart
+class SettingsRepository with FailureGuard {
+  Either<Failure, Settings> parse(String json) =>
+      callSync(() => Settings.fromJson(jsonDecode(json)));
+}
 ```
 
 ## Failure types
@@ -279,15 +326,29 @@ The same pattern applies to any HTTP client — just write a mapper that handles
 | `getOrElseCompute(fn)`   | `R`                     | Get Right or compute from Left |
 | `getLeftOrElse(default)` | `L`                     | Get Left or default            |
 | `swap()`                 | `Either<R, L>`          | Swap Left and Right            |
+| `onLeft(fn)`             | `Either<L, R>`          | Side effect on Left, chainable |
+| `onRight(fn)`            | `Either<L, R>`          | Side effect on Right, chainable|
 
 ### Static methods
 
-| Method                               | Description                          |
-| ------------------------------------ | ------------------------------------ |
-| `Either.tryCatch(onError, fn)`       | Catch exceptions, convert to Left    |
-| `Either.tryExcept<E, R>(fn)`         | Simplified `tryCatch`                |
-| `Either.cond(test, left, right)`     | Build from a condition               |
-| `Either.condLazy(test, left, right)` | Lazy version of `cond`               |
+| Method                                  | Description                          |
+| --------------------------------------- | ------------------------------------ |
+| `Either.tryCatch(onError, fn)`          | Catch exceptions, convert to Left    |
+| `Either.tryCatchAsync(onError, fn)`     | Async version of `tryCatch`          |
+| `Either.tryExcept<E, R>(fn)`            | Simplified `tryCatch`                |
+| `Either.cond(test, left, right)`        | Build from a condition               |
+| `Either.condLazy(test, left, right)`    | Lazy version of `cond`               |
+
+### `FutureEither` extension (on `Future<Either<L, R>>`)
+
+| Method               | Description                              |
+| -------------------- | ---------------------------------------- |
+| `mapRight(fn)`       | Transform Right without awaiting first   |
+| `mapLeft(fn)`        | Transform Left without awaiting first    |
+| `thenRight(fn)`      | Chain another `Either` on Right          |
+| `thenLeft(fn)`       | Chain another `Either` on Left           |
+| `fold(fnL, fnR)`     | Await and fold in one step               |
+| `getOrElse(default)` | Await and unwrap with default            |
 
 ## License
 

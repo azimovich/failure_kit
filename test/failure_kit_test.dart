@@ -155,6 +155,112 @@ void main() {
         expect(result.isLeft, isTrue);
         expect(result.left, equals('error'));
       });
+
+      test('tryCatchAsync returns Right on success', () async {
+        final result = await Either.tryCatchAsync<String, int, Exception>(
+          (e) => e.toString(),
+          () async => 42,
+        );
+        expect(result.right, equals(42));
+      });
+
+      test('tryCatchAsync returns Left on async exception', () async {
+        final result = await Either.tryCatchAsync<String, int, FormatException>(
+          (e) => 'parse error',
+          () async => int.parse('not-a-number'),
+        );
+        expect(result.left, equals('parse error'));
+      });
+    });
+
+    group('Side-effect taps', () {
+      test('onRight executes on Right and returns same Either', () {
+        const either = Right<String, int>(42);
+        int? seen;
+        final returned = either.onRight((r) => seen = r);
+        expect(seen, equals(42));
+        expect(returned, same(either));
+      });
+
+      test('onRight does nothing on Left', () {
+        const either = Left<String, int>('error');
+        var called = false;
+        either.onRight((_) => called = true);
+        expect(called, isFalse);
+      });
+
+      test('onLeft executes on Left and returns same Either', () {
+        const either = Left<String, int>('error');
+        String? seen;
+        final returned = either.onLeft((l) => seen = l);
+        expect(seen, equals('error'));
+        expect(returned, same(either));
+      });
+
+      test('onLeft does nothing on Right', () {
+        const either = Right<String, int>(42);
+        var called = false;
+        either.onLeft((_) => called = true);
+        expect(called, isFalse);
+      });
+    });
+
+    group('toString', () {
+      test('Right prints value', () {
+        expect(const Right<String, int>(42).toString(), equals('Right(42)'));
+      });
+
+      test('Left prints value', () {
+        expect(const Left<String, int>('error').toString(), equals('Left(error)'));
+      });
+    });
+
+    group('FutureEither extension', () {
+      Future<Either<String, int>> success() async => const Right(42);
+      Future<Either<String, int>> failure() async => const Left('error');
+
+      test('mapRight transforms Right', () async {
+        final result = await success().mapRight((r) => r * 2);
+        expect(result.right, equals(84));
+      });
+
+      test('mapRight passes Left through', () async {
+        final result = await failure().mapRight((r) => r * 2);
+        expect(result.left, equals('error'));
+      });
+
+      test('mapLeft transforms Left', () async {
+        final result = await failure().mapLeft((l) => l.toUpperCase());
+        expect(result.left, equals('ERROR'));
+      });
+
+      test('thenRight chains Either-producing function', () async {
+        final result = await success().thenRight((r) async => Right<String, String>('value: $r'));
+        expect(result.right, equals('value: 42'));
+      });
+
+      test('thenLeft chains on Left', () async {
+        final result = await failure().thenLeft((l) => Left<int, int>(l.length));
+        expect(result.left, equals(5));
+      });
+
+      test('fold awaits and folds', () async {
+        expect(await success().fold((l) => 'L', (r) => 'R:$r'), equals('R:42'));
+        expect(await failure().fold((l) => 'L:$l', (r) => 'R'), equals('L:error'));
+      });
+
+      test('getOrElse awaits and returns default on Left', () async {
+        expect(await success().getOrElse(0), equals(42));
+        expect(await failure().getOrElse(0), equals(0));
+      });
+
+      test('chains compose without intermediate awaits', () async {
+        final result = await success()
+            .mapRight((r) => r + 1)
+            .thenRight((r) async => Right<String, String>('v$r'))
+            .getOrElse('none');
+        expect(result, equals('v43'));
+      });
     });
 
     group('Equality', () {
@@ -549,6 +655,25 @@ void main() {
     test('custom failureChain intercepts errors', () async {
       final guard = _CustomChainGuard();
       final result = await guard.failingCall();
+      expect(result.left, isA<ServerFailure>());
+      expect(result.left.message, equals('Custom mapped'));
+    });
+
+    test('callSync returns Right on success', () {
+      final guard = _BaseGuard();
+      final result = guard.callSync(() => 42);
+      expect(result.right, equals(42));
+    });
+
+    test('callSync returns Left on exception', () {
+      final guard = _BaseGuard();
+      final result = guard.callSync<int>(() => throw const FormatException('bad'));
+      expect(result.left, isA<ParsingFailure>());
+    });
+
+    test('callSync uses custom failureChain', () {
+      final guard = _CustomChainGuard();
+      final result = guard.callSync<int>(() => throw Exception('x'));
       expect(result.left, isA<ServerFailure>());
       expect(result.left.message, equals('Custom mapped'));
     });

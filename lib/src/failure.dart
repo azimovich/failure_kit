@@ -111,6 +111,9 @@ class ServerFailure extends Failure {
     super.stackTrace,
   });
 
+  /// Equality compares [message] and [statusCode] only — [data], [cause] and
+  /// [stackTrace] are intentionally ignored so that two failures representing
+  /// the same server error compare equal regardless of response payload.
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

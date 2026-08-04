@@ -51,4 +51,14 @@ mixin FailureGuard {
       return Left(failureChain.handle(e, st));
     }
   }
+
+  /// Synchronous version of [call] — for actions that don't return a future
+  /// (e.g. parsing, local computation, in-memory cache reads).
+  Either<Failure, T> callSync<T>(T Function() action) {
+    try {
+      return Right(action());
+    } catch (e, st) {
+      return Left(failureChain.handle(e, st));
+    }
+  }
 }

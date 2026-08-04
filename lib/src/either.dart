@@ -21,10 +21,16 @@ sealed class Either<L, R> {
   bool get isRight => this is Right<L, R>;
 
   /// Get [Left] value, may throw an exception when the value is [Right]
-  L get left => fold<L>(
-        (L value) => value,
-        (R right) => throw StateError('Called .left on a Right. Check isLeft before accessing.'),
-      );
+  L get left => switch (this) {
+        Left(:final value) => value,
+        Right() => throw StateError('Called .left on a Right. Check isLeft before accessing.'),
+      };
+
+  /// Get [Right] value, may throw an exception when the value is [Left]
+  R get right => switch (this) {
+        Left() => throw StateError('Called .right on a Left. Check isRight before accessing.'),
+        Right(:final value) => value,
+      };
 
   /// Get [Right] value or return [defaultValue] if [Left]
   R getOrElse(R defaultValue) => fold((_) => defaultValue, (r) => r);
@@ -35,51 +41,82 @@ sealed class Either<L, R> {
   /// Get [Left] value or return [defaultValue] if [Right]
   L getLeftOrElse(L defaultValue) => fold((l) => l, (_) => defaultValue);
 
-  /// Get [Right] value, may throw an exception when the value is [Left]
-  R get right => fold<R>(
-        (L left) => throw StateError('Called .right on a Left. Check isRight before accessing.'),
-        (R value) => value,
-      );
-
   /// Get [Right] value or null if [Left]
   R? get rightOrNull => fold((_) => null, (r) => r);
 
   /// Get [Left] value or null if [Right]
   L? get leftOrNull => fold((l) => l, (_) => null);
 
-  /// Transform values of [Left] and [Right]
-  Either<TL, TR> either<TL, TR>(TL Function(L left) fnL, TR Function(R right) fnR);
-
-  Either<L, TR> then<TR>(Either<L, TR> Function(R right) fnR);
-
-  Future<Either<L, TR>> thenAsync<TR>(FutureOr<Either<L, TR>> Function(R right) fnR);
-
-  Either<TL, R> thenLeft<TL>(Either<TL, R> Function(L left) fnL);
-
-  Future<Either<TL, R>> thenLeftAsync<TL>(FutureOr<Either<TL, R>> Function(L left) fnL);
-
-  /// Transform value of [Right]
-  Either<L, TR> map<TR>(TR Function(R right) fnR);
-
-  /// Transform value of [Left]
-  Either<TL, R> mapLeft<TL>(TL Function(L left) fnL);
-
-  /// Transform value of [Right]
-  Future<Either<L, TR>> mapAsync<TR>(FutureOr<TR> Function(R right) fnR);
-
-  /// Transform value of [Left]
-  Future<Either<TL, R>> mapLeftAsync<TL>(FutureOr<TL> Function(L left) fnL);
-
   /// Fold [Left] and [Right] into the value of one type
-  T fold<T>(T Function(L left) fnL, T Function(R right) fnR);
+  T fold<T>(T Function(L left) fnL, T Function(R right) fnR) => switch (this) {
+        Left(:final value) => fnL(value),
+        Right(:final value) => fnR(value),
+      };
+
+  /// Transform values of [Left] and [Right]
+  Either<TL, TR> either<TL, TR>(TL Function(L left) fnL, TR Function(R right) fnR) =>
+      fold((l) => Left(fnL(l)), (r) => Right(fnR(r)));
+
+  Either<L, TR> then<TR>(Either<L, TR> Function(R right) fnR) => fold(Left.new, fnR);
+
+  Future<Either<L, TR>> thenAsync<TR>(FutureOr<Either<L, TR>> Function(R right) fnR) =>
+      fold((l) => Future.value(Left(l)), (r) => Future.value(fnR(r)));
+
+  Either<TL, R> thenLeft<TL>(Either<TL, R> Function(L left) fnL) => fold(fnL, Right.new);
+
+  Future<Either<TL, R>> thenLeftAsync<TL>(FutureOr<Either<TL, R>> Function(L left) fnL) =>
+      fold((l) => Future.value(fnL(l)), (r) => Future.value(Right(r)));
+
+  /// Transform value of [Right]
+  Either<L, TR> map<TR>(TR Function(R right) fnR) => fold(Left.new, (r) => Right(fnR(r)));
+
+  /// Transform value of [Left]
+  Either<TL, R> mapLeft<TL>(TL Function(L left) fnL) => fold((l) => Left(fnL(l)), Right.new);
+
+  /// Transform value of [Right]
+  Future<Either<L, TR>> mapAsync<TR>(FutureOr<TR> Function(R right) fnR) =>
+      fold((l) => Future.value(Left(l)), (r) => Future.value(fnR(r)).then(Right.new));
+
+  /// Transform value of [Left]
+  Future<Either<TL, R>> mapLeftAsync<TL>(FutureOr<TL> Function(L left) fnL) =>
+      fold((l) => Future.value(fnL(l)).then(Left.new), (r) => Future.value(Right(r)));
 
   /// Swap [Left] and [Right]
   Either<R, L> swap() => fold(Right.new, Left.new);
+
+  /// Executes [fn] with the [Left] value if present, then returns this
+  /// [Either] unchanged. Useful for side effects like logging.
+  ///
+  /// ```dart
+  /// result.onLeft((f) => log.warning(f.message)).getOrElse(fallback);
+  /// ```
+  Either<L, R> onLeft(void Function(L left) fn) {
+    if (this case Left(:final value)) fn(value);
+    return this;
+  }
+
+  /// Executes [fn] with the [Right] value if present, then returns this
+  /// [Either] unchanged. Useful for side effects like logging.
+  Either<L, R> onRight(void Function(R right) fn) {
+    if (this case Right(:final value)) fn(value);
+    return this;
+  }
 
   /// Constructs a new [Either] from a function that might throw
   static Either<L, R> tryCatch<L, R, Err extends Object>(L Function(Err err) onError, R Function() fnR) {
     try {
       return Right(fnR());
+    } on Err catch (e) {
+      return Left(onError(e));
+    }
+  }
+
+  /// Async version of [Either.tryCatch] — awaits [fnR] and catches [Err]
+  /// thrown either synchronously or from the returned future.
+  static Future<Either<L, R>> tryCatchAsync<L, R, Err extends Object>(
+      L Function(Err err) onError, FutureOr<R> Function() fnR) async {
+    try {
+      return Right(await fnR());
     } on Err catch (e) {
       return Left(onError(e));
     }
@@ -105,7 +142,6 @@ sealed class Either<L, R> {
 
   static Either<L, R> condLazy<L, R>({required bool test, required Lazy<L> leftValue, required Lazy<R> rightValue}) =>
       test ? Right(rightValue()) : Left(leftValue());
-
 }
 
 /// Used for "failure"
@@ -115,44 +151,14 @@ class Left<L, R> extends Either<L, R> {
   final L value;
 
   @override
-  Either<TL, TR> either<TL, TR>(TL Function(L left) fnL, TR Function(R right) fnR) => Left<TL, TR>(fnL(value));
-
-  @override
-  Either<L, TR> then<TR>(Either<L, TR> Function(R right) fnR) => Left<L, TR>(value);
-
-  @override
-  Future<Either<L, TR>> thenAsync<TR>(FutureOr<Either<L, TR>> Function(R right) fnR) =>
-      Future.value(Left<L, TR>(value));
-
-  @override
-  Either<TL, R> thenLeft<TL>(Either<TL, R> Function(L left) fnL) => fnL(value);
-
-  @override
-  Future<Either<TL, R>> thenLeftAsync<TL>(FutureOr<Either<TL, R>> Function(L left) fnL) => Future.value(fnL(value));
-
-  @override
-  Either<L, TR> map<TR>(TR Function(R right) fnR) => Left<L, TR>(value);
-
-  @override
-  Either<TL, R> mapLeft<TL>(TL Function(L left) fnL) => Left<TL, R>(fnL(value));
-
-  @override
-  Future<Either<L, TR>> mapAsync<TR>(FutureOr<TR> Function(R right) fnR) =>
-      Future<Either<L, TR>>.value(Left<L, TR>(value));
-
-  @override
-  Future<Either<TL, R>> mapLeftAsync<TL>(FutureOr<TL> Function(L left) fnL) =>
-      Future.value(fnL(value)).then(Left<TL, R>.new);
-
-  @override
-  T fold<T>(T Function(L left) fnL, T Function(R right) fnR) => fnL(value);
-
-  @override
   bool operator ==(Object other) =>
       identical(this, other) || (other is Left<L, R> && other.value == value);
 
   @override
   int get hashCode => Object.hash('Left', value);
+
+  @override
+  String toString() => 'Left($value)';
 }
 
 /// Used for "success"
@@ -162,41 +168,46 @@ class Right<L, R> extends Either<L, R> {
   final R value;
 
   @override
-  Either<TL, TR> either<TL, TR>(TL Function(L left) fnL, TR Function(R right) fnR) => Right<TL, TR>(fnR(value));
-
-  @override
-  Either<L, TR> then<TR>(Either<L, TR> Function(R right) fnR) => fnR(value);
-
-  @override
-  Future<Either<L, TR>> thenAsync<TR>(FutureOr<Either<L, TR>> Function(R right) fnR) => Future.value(fnR(value));
-
-  @override
-  Either<TL, R> thenLeft<TL>(Either<TL, R> Function(L left) fnL) => Right<TL, R>(value);
-
-  @override
-  Future<Either<TL, R>> thenLeftAsync<TL>(FutureOr<Either<TL, R>> Function(L left) fnL) =>
-      Future.value(Right<TL, R>(value));
-
-  @override
-  Either<L, TR> map<TR>(TR Function(R right) fnR) => Right<L, TR>(fnR(value));
-
-  @override
-  Either<TL, R> mapLeft<TL>(TL Function(L left) fnL) => Right<TL, R>(value);
-
-  @override
-  Future<Either<L, TR>> mapAsync<TR>(FutureOr<TR> Function(R right) fnR) =>
-      Future.value(fnR(value)).then(Right<L, TR>.new);
-
-  @override
-  Future<Either<TL, R>> mapLeftAsync<TL>(FutureOr<TL> Function(L left) fnL) => Future.value(Right<TL, R>(value));
-
-  @override
-  T fold<T>(T Function(L left) fnL, T Function(R right) fnR) => fnR(value);
-
-  @override
   bool operator ==(Object other) =>
       identical(this, other) || (other is Right<L, R> && other.value == value);
 
   @override
   int get hashCode => Object.hash('Right', value);
+
+  @override
+  String toString() => 'Right($value)';
+}
+
+/// Chaining helpers for `Future<Either>` — lets you compose without the
+/// `(await x).map(...)` dance:
+///
+/// ```dart
+/// final name = await repo.getUser(1).mapRight((u) => u.name).getOrElse('Anonymous');
+/// ```
+///
+/// Named `mapRight`/`thenRight` (not `map`/`then`) because [Future] already
+/// declares `then`, which would shadow an extension member.
+extension FutureEither<L, R> on Future<Either<L, R>> {
+  /// Transform value of [Right] — see [Either.mapAsync].
+  Future<Either<L, TR>> mapRight<TR>(FutureOr<TR> Function(R right) fnR) async =>
+      (await this).mapAsync(fnR);
+
+  /// Transform value of [Left] — see [Either.mapLeftAsync].
+  Future<Either<TL, R>> mapLeft<TL>(FutureOr<TL> Function(L left) fnL) async =>
+      (await this).mapLeftAsync(fnL);
+
+  /// Chain another [Either]-producing function on [Right] — see [Either.thenAsync].
+  Future<Either<L, TR>> thenRight<TR>(FutureOr<Either<L, TR>> Function(R right) fnR) async =>
+      (await this).thenAsync(fnR);
+
+  /// Chain another [Either]-producing function on [Left] — see [Either.thenLeftAsync].
+  Future<Either<TL, R>> thenLeft<TL>(FutureOr<Either<TL, R>> Function(L left) fnL) async =>
+      (await this).thenLeftAsync(fnL);
+
+  /// Fold [Left] and [Right] into the value of one type — see [Either.fold].
+  Future<T> fold<T>(T Function(L left) fnL, T Function(R right) fnR) async =>
+      (await this).fold(fnL, fnR);
+
+  /// Get [Right] value or return [defaultValue] if [Left]
+  Future<R> getOrElse(R defaultValue) async => (await this).getOrElse(defaultValue);
 }
